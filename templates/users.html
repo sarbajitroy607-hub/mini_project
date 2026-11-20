@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Users{% endblock %}
+{% block content %}
+<div class="page-head"><div><div class="eyebrow">DIRECTORY &amp; IDENTITY ENGINE</div><h1>User Management &amp; Biometric Directory</h1><p>Unified vector database of students, staff, and institutional identities.</p></div>
+{% if role == 'admin' %}<div style="display:flex;gap:8px"><form method="post" action="{{ url_for('rebuild_features') }}"><input type="hidden" name="_csrf" value="{{ csrf_token() }}"><button class="btnx"><i data-lucide="refresh-cw"></i>Rebuild Features</button></form><a class="btnx primary" href="{{ url_for('user_form') }}"><i data-lucide="user-plus"></i>Enroll New User</a></div>{% endif %}</div>
+<div class="stat-grid" style="grid-template-columns:repeat(4,1fr)">
+  <div class="cardx stat-card"><div class="stat-label">Total Registered</div><div class="stat-value">{{ users|length }}</div></div>
+  <div class="cardx stat-card"><div class="stat-label">Active Profiles</div><div class="stat-value">{{ users|selectattr('active')|list|length }}</div></div>
+  <div class="cardx stat-card"><div class="stat-label">Biometric Captures</div><div class="stat-value">{% set ns=namespace(n=0) %}{% for u in users %}{% if face[u.name] %}{% set ns.n=ns.n+1 %}{% endif %}{% endfor %}{{ ns.n }}</div></div>
+  <div class="cardx stat-card"><div class="stat-label">Suspended</div><div class="stat-value">{{ users|rejectattr('active')|list|length }}</div></div>
+</div>
+<div style="display:flex;gap:8px;margin-bottom:10px"><button id="tabUsers" class="btnx primary sm" onclick="showTab('users')">Identity Profiles</button><button id="tabStaff" class="btnx sm" onclick="showTab('staff')">Staff &amp; System Settings</button></div>
+<div id="usersTab" class="cardx">
+  <form method="get" class="filter-bar" aria-label="Search and filter users">
+    <input name="q" value="{{ q }}" placeholder="Search name, roll no., email, or department" style="width:280px">
+    <select name="department" class="form-select" style="width:180px"><option value="">All Departments</option>{% for d in departments %}<option value="{{ d }}" {{ 'selected' if department == d else '' }}>{{ d }}</option>{% endfor %}</select>
+    <select name="status" class="form-select" style="width:150px"><option value="all" {{ 'selected' if status == 'all' else '' }}>All statuses</option><option value="active" {{ 'selected' if status == 'active' else '' }}>Active</option><option value="inactive" {{ 'selected' if status == 'inactive' else '' }}>Inactive</option></select>
+    <button class="btnx primary sm">Filter</button><a class="btnx sm" href="{{ url_for('users') }}">Clear</a>
+  </form>
+  <table class="tablex">
+    <thead><tr><th>Name</th><th>Roll</th><th>Dept</th><th>Email</th><th>Face data</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+    {% for u in users %}
+    <tr>
+      <td><a class="person" href="{{ url_for('user_detail', uid=u.id) }}" style="text-decoration:none"><div class="person-pic">{{ u.name[:1]|upper }}</div><div><div class="person-name">{{ u.name }}</div><div class="person-sub">ID · {{ u.roll_no or '—' }}</div></div></a></td><td>{{ u.roll_no or '' }}</td><td>{{ u.department or '' }}</td><td>{{ u.email or '' }}</td>
+      <td>{% if face[u.name] %}<span class="badgex badge-success">Captured</span>{% else %}<span class="badgex badge-muted">None</span>{% endif %}</td>
+      <td><span class="badgex {{ 'badge-success' if u.active else 'badge-danger' }}">{{ 'Active' if u.active else 'Inactive' }}</span></td>
+      <td class="text-end text-nowrap">{% if role == 'admin' %}
+        <a class="btnx sm success" href="{{ url_for('face_register', uid=u.id) }}"><i data-lucide="scan-face"></i></a>
+        <a class="btnx sm" href="{{ url_for('user_form', uid=u.id) }}"><i data-lucide="pencil"></i></a>
+        <form style="display:inline" method="post" action="{{ url_for('user_toggle', uid=u.id) }}"><input type="hidden" name="_csrf" value="{{ csrf_token() }}"><button class="btnx sm">{{ 'Deactivate' if u.active else 'Activate' }}</button></form>
+        <form style="display:inline" method="post" action="{{ url_for('user_delete', uid=u.id) }}" onsubmit="return confirm('Delete {{ u.name }} and ALL their attendance records?')"><input type="hidden" name="_csrf" value="{{ csrf_token() }}"><button class="btnx sm danger"><i data-lucide="trash-2"></i></button></form>{% endif %}</td>
+    </tr>
+    {% else %}<tr><td colspan="7" style="color:#99a5b7;text-align:center">No users yet.</td></tr>{% endfor %}
+    </tbody></table>
+</div>
+<div id="staffTab" class="cardx card-pad" style="display:none">
+  <div class="grid-2">
+    <div><div class="card-head"><h2>Staff Accounts</h2></div>
+      <table class="tablex">
+        {% for s in staff %}<tr><td>{{ s.username }}</td><td><span class="badge text-bg-{{ 'dark' if s.role == 'admin' else 'secondary' }}">{{ s.role }}</span></td>
+        <td style="text-align:right">{% if role == 'admin' %}<form method="post" action="{{ url_for('staff_delete', sid=s.id) }}" onsubmit="return confirm('Delete this account?')"><input type="hidden" name="_csrf" value="{{ csrf_token() }}"><button class="btnx sm danger">Delete</button></form>{% endif %}</td></tr>{% endfor %}
+      </table>
+      {% if role == 'admin' %}
+      <form method="post" action="{{ url_for('staff_new') }}" style="display:grid;grid-template-columns:1fr 1fr 120px 70px;gap:7px;margin-top:12px">
+        <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+        <input class="form-control" name="username" placeholder="Username" required>
+        <input class="form-control" type="password" name="password" placeholder="Password" required>
+        <select class="form-select" name="role"><option>teacher</option><option>admin</option></select>
+        <button class="btnx primary sm">Add</button>
+      </form>{% endif %}
+      <p style="color:#97a3b5;font-size:10px;margin-top:12px"><b>admin</b>: full access. <b>teacher</b>: dashboard, reports, manual attendance.</p>
+    </div>
+    {% if role == 'admin' %}<div><div class="card-head"><h2>System Settings</h2></div>
+      <form method="post" action="{{ url_for('save_settings') }}">
+        <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+        <label class="form-label">Institution name</label><input class="form-control" name="institution" value="{{ settings.institution }}">
+        <label class="form-label">Mark as "Late" after (24h, HH:MM)</label><input class="form-control" name="late_after" value="{{ settings.late_after }}" pattern="([01]\d|2[0-3]):[0-5]\d">
+        <button class="btnx primary" style="margin-top:12px">Save preferences</button>
+      </form></div>{% endif %}
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}<script>
+function showTab(t){document.getElementById('usersTab').style.display=t==='users'?'block':'none';document.getElementById('staffTab').style.display=t==='staff'?'block':'none';document.getElementById('tabUsers').className='btnx sm '+(t==='users'?'primary':'');document.getElementById('tabStaff').className='btnx sm '+(t==='staff'?'primary':'');}
+if(location.hash==='#staff')showTab('staff');
+</script>{% endblock %}

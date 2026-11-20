@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Reports{% endblock %}
+{% block content %}
+<div class="page-head"><div><div class="eyebrow">BIOMETRIC INTELLIGENCE // EXECUTIVE REPORTS</div><h1>Biometric Analytics &amp; Executive Reports</h1><p>{{ settings.institution }} · {{ start }} to {{ end }} · {{ working }} working day(s)</p></div>
+<div style="display:flex;gap:7px"><a class="btnx" href="{{ url_for('export_csv', start=start, end=end, kind='summary') }}"><i data-lucide="table"></i>CSV</a><a class="btnx primary" href="{{ url_for('export_excel', start=start, end=end) }}"><i data-lucide="file-spreadsheet"></i>Excel</a><a class="btnx" href="{{ url_for('export_pdf', start=start, end=end) }}"><i data-lucide="file-text"></i>PDF</a></div></div>
+<form class="filter-bar cardx no-print" method="get" style="margin-bottom:14px;border:1px solid var(--line)"><label style="font-size:10px;color:#7f8da3">From</label><input type="date" name="start" value="{{ start }}" style="width:150px"><label style="font-size:10px;color:#7f8da3">To</label><input type="date" name="end" value="{{ end }}" style="width:150px"><button class="btnx primary sm">Generate</button><button type="button" class="btnx sm" onclick="window.print()">Print</button></form>
+<div class="cardx"><table class="tablex">
+  <thead><tr><th>Name</th><th>Roll</th><th>Dept</th><th>Present</th><th>Late</th><th>Absent</th><th style="width:25%">Attendance</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+  <tr><td><a href="{{ url_for('user_detail', uid=r.id) }}" style="font-weight:800;text-decoration:none">{{ r.name }}</a></td><td>{{ r.roll_no or '' }}</td><td>{{ r.department or '' }}</td>
+    <td>{{ r.present }}</td><td>{{ r.late }}</td><td>{{ r.absent }}</td>
+    <td><div class="progress"><div class="progress-bar" style="width:{{ r.percent }}%;background:{{ '#ef4961' if r.percent < 75 else '#246bfd' }}"></div></div><div style="font-size:10px;margin-top:4px">{{ r.percent }}%</div></td></tr>
+  {% else %}<tr><td colspan="7" style="color:#99a5b7;text-align:center">No users yet.</td></tr>{% endfor %}
+  </tbody></table></div>
+{% endblock %}

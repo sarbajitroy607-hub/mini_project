@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}{{ user.name }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><div class="eyebrow">IDENTITY PROFILE</div><h1>{{ user.name }}</h1><p>{{ user.roll_no or 'No roll number' }} · {{ user.department or 'No department' }}</p></div><a class="btnx" href="{{ url_for('face_register', uid=user.id) }}"><i data-lucide="scan-face"></i>Manage face profile</a></div>
+<div class="grid-2">
+  <div class="cardx card-pad">
+    <div class="person" style="margin-bottom:16px"><div class="person-pic" style="width:58px;height:58px;font-size:20px">{{ user.name[:1]|upper }}</div><div><div style="font-size:17px;font-weight:800">{{ user.name }}</div><div class="person-sub">{{ user.email or 'No email' }}</div></div></div>
+    {% if me %}<div class="stat-grid" style="grid-template-columns:repeat(3,1fr)"><div><div class="stat-label">Attended</div><div class="stat-value">{{ me.attended }}</div></div><div><div class="stat-label">Late</div><div class="stat-value">{{ me.late }}</div></div><div><div class="stat-label">Rate</div><div class="stat-value">{{ me.percent }}%</div></div></div>{% endif %}
+  </div>
+  <div class="cardx card-pad"><div class="card-head"><h2>Profile status</h2></div><p>Face data: {% if has_face %}<span class="badgex badge-success">Captured</span>{% else %}<span class="badgex badge-muted">None</span>{% endif %}</p><p>Status: <span class="badgex {{ 'badge-success' if user.active else 'badge-danger' }}">{{ 'Active' if user.active else 'Inactive' }}</span></p></div>
+</div>
+<div class="cardx" style="margin-top:14px"><table class="tablex"><thead><tr><th>Date</th><th>Time</th><th>Status</th><th>Via</th></tr></thead><tbody>
+{% for r in recs %}<tr><td>{{ r.date }}</td><td>{{ r.time }}</td><td><span class="badgex {{ 'badge-warning' if r.status=='Late' else 'badge-success' }}">{{ r.status }}</span></td><td>{{ r.method }}</td></tr>
+{% else %}<tr><td colspan="4" style="color:#99a5b7;text-align:center">No records yet.</td></tr>{% endfor %}
+</tbody></table></div>
+{% endblock %}

@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+{% block title %}Attendance{% endblock %}
+{% block content %}
+<div class="page-head"><div><div class="eyebrow">ACCESS &amp; TIME JOURNAL</div><h1>Attendance Records &amp; Access Logs</h1><p>Verified biometric and manual check-in events across the campus.</p></div><a class="btnx" href="{{ url_for('export_csv', start=date, end=date) }}"><i data-lucide="download"></i>Export CSV</a></div>
+<form class="filter-bar cardx no-print" method="get" style="margin-bottom:14px;border:1px solid var(--line)">
+  <input type="date" name="date" value="{{ date }}" style="width:150px"><input name="q" placeholder="Filter by name or roll number" value="{{ q }}" style="width:280px"><button class="btnx primary">Show records</button>
+  <span style="margin-left:auto;color:#7f8da3;font-size:11px">{{ summary.marked }} of {{ summary.total }} marked · {{ summary.rate }}%</span>
+</form>
+<div class="grid-2">
+  <div class="cardx"><table class="tablex">
+      <thead><tr><th>Name</th><th>Roll</th><th>Time</th><th>Status</th><th>Via</th><th></th></tr></thead>
+      <tbody>
+      {% for r in rows %}
+      <tr><td><div class="person"><div class="person-pic">{{ r.name[:1]|upper }}</div><div><div class="person-name">{{ r.name }}</div></div></div></td><td>{{ r.roll_no or '—' }}</td><td>{{ r.time }}</td>
+        <td><span class="badgex {{ 'badge-warning' if r.status == 'Late' else 'badge-success' }}">{{ r.status }}</span></td>
+        <td style="color:#8794a8">{{ r.method }}</td>
+        <td class="text-end">{% if role == 'admin' %}
+          <form method="post" action="{{ url_for('delete_record', rowid=r.id) }}" onsubmit="return confirm('Delete this record?')">
+            <input type="hidden" name="_csrf" value="{{ csrf_token() }}"><button class="icon-button" title="Delete"><i data-lucide="trash-2"></i></button></form>{% endif %}</td></tr>
+      {% else %}<tr><td colspan="6" style="color:#99a5b7;text-align:center">No records for this date.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+  <div class="cardx card-pad">
+    <div class="card-head"><h2>Absent · {{ absent|length }}</h2><span class="badgex badge-danger">Mark manually</span></div>
+    <div>
+    {% for u in absent %}
+      <div style="padding:9px 0;border-bottom:1px solid #f0f3f8">
+        <form style="display:flex;gap:6px" method="post" action="{{ url_for('mark_manual') }}">
+          <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+          <input type="hidden" name="user_id" value="{{ u.id }}"><input type="hidden" name="date" value="{{ date }}">
+          <span style="flex:1;font-weight:700">{{ u.name }}</span>
+          <select name="status" class="form-select" style="height:31px;width:82px"><option>Present</option><option>Late</option></select>
+          <button class="btnx success sm">Mark</button>
+        </form>
+      </div>
+    {% else %}<div style="color:#99a5b7">Everyone is marked.</div>{% endfor %}
+    </div>
+  </div>
+</div>
+{% endblock %}

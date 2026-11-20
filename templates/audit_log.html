@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Audit Log{% endblock %}
+{% block content %}
+<div class="page-head"><div><div class="eyebrow">SYSTEM SECURITY // TRACE LOG</div><h1>Audit Log &amp; State Changes</h1><p>Most recent 200 state-changing actions.</p></div></div>
+<form class="filter-bar cardx" method="get" style="margin-bottom:14px"><input name="q" value="{{ q }}" placeholder="Search actor, action, or route" style="width:320px"><button class="btnx primary sm">Search</button><a class="btnx sm" href="{{ url_for('audit_log') }}">Clear</a></form>
+<div class="cardx"><div class="table-responsive"><table class="tablex">
+  <thead><tr><th>When</th><th>Actor</th><th>Role</th><th>Action</th><th>Route</th><th>Result</th><th>IP</th></tr></thead>
+  <tbody>{% for row in rows %}
+    <tr><td class="text-nowrap">{{ row.created_at }}</td><td>{{ row.actor or 'Anonymous' }}</td><td>{{ row.actor_role or '—' }}</td>
+      <td><code>{{ row.action }}</code></td><td><code>{{ row.target or '—' }}</code></td>
+      <td><span class="badge text-bg-{{ 'success' if row.status_code < 400 else 'warning' }}">{{ row.status_code }}</span></td><td>{{ row.ip_address or '—' }}</td></tr>
+  {% else %}<tr><td colspan="7" class="text-muted">No audit entries yet.</td></tr>{% endfor %}</tbody>
+</table></div></div>
+{% endblock %}

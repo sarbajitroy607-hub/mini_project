@@ -1,0 +1,10 @@
+# Use Python 3.10-3.12 (NOT 3.14). dlib-bin = prebuilt dlib, no C++ compiler needed on Windows.
+dlib-bin
+face_recognition_models   # ships the 2 dlib model files, so no Google Drive download is needed
+numpy
+pandas
+opencv-python
+Pillow
+flask>=2.3
+reportlab                 # PDF attendance reports
+setuptools<81             # face_recognition_models imports legacy pkg_resources

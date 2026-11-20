@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Edit' if user else 'Add' }} user{% endblock %}
+{% block content %}
+<div class="page-head"><div><div class="eyebrow">PERSONNEL DIRECTORY</div><h1>{{ 'Edit Institutional Profile' if user else 'Enroll New Person' }}</h1><p>Create or update a face recognition identity.</p></div></div>
+<div class="grid-2"><div class="cardx card-pad">
+  <form method="post">
+    <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+    <label class="form-label">Full name</label>
+    <input class="form-control" name="name" required value="{{ user.name if user else request.form.name }}">
+    <label class="form-label">Roll / employee number</label><input class="form-control" name="roll_no" value="{{ user.roll_no or '' if user else '' }}">
+    <label class="form-label">Department</label><input class="form-control" name="department" value="{{ user.department or '' if user else '' }}">
+    <label class="form-label">Email address</label><input class="form-control" type="email" name="email" value="{{ user.email or '' if user else '' }}">
+    {% if user %}<label style="display:flex;align-items:center;gap:7px;margin:14px 0"><input type="checkbox" name="active" id="act" {{ 'checked' if user.active }}>Active profile</label>{% endif %}
+    <div style="display:flex;gap:8px;margin-top:16px"><button class="btnx primary">Save profile</button><a class="btnx" href="{{ url_for('users') }}">Cancel</a></div>
+  </form></div></div>
+{% endblock %}

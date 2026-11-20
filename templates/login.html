@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Sign in{% endblock %}
+{% block content %}
+<div class="login-page">
+  <section class="login-visual">
+    <div class="login-brand"><div class="brand-mark">A</div> AttendAI <small>SECURE EDGE US</small></div>
+    <div class="login-copy"><div class="eyebrow" style="color:#74a2ff">EDGE BIOMETRIC ENGINE</div><h1>Next-Generation Facial Attendance for Modern Campuses.</h1><p>Deploy autonomous optical attendance with enterprise-grade encryption and sub-second edge verification.</p></div>
+  </section>
+  <section class="login-form-side">
+    <div class="login-form">
+      <div class="eyebrow">INSTITUTIONAL ACCESS CONTROL</div><h2>Sign in to AttendAI</h2><p style="color:#7b8799;margin:8px 0 18px">Enter your administrative, faculty, or institutional credentials.</p>
+      {% with msgs = get_flashed_messages(with_categories=true) %}{% for cat,m in msgs %}<div class="alertx alert-{{ cat }}">{{ m }}</div>{% endfor %}{% endwith %}
+      <form method="post"><input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+        <label>Institutional Username</label><input class="form-control" name="username" placeholder="alex.morgan" required autofocus>
+        <label>Password</label><div class="password-wrap"><input class="form-control" type="password" name="password" placeholder="••••••••••" required></div>
+        <button class="login-submit">Sign in to Dashboard →</button>
+      </form>
+    </div>
+  </section>
+</div>
+{% endblock %}

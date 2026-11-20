@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><div class="eyebrow">NODE CLUSTER // LIVE SYSTEM</div><h1>System Overview &amp; Real-Time Biometrics</h1><p>Campus-wide attendance intelligence and edge recognition telemetry.</p></div>
+  <form method="get" style="display:flex;gap:8px"><input type="date" name="date" value="{{ today }}" class="form-control"><button class="btnx">Apply</button></form>
+</div>
+<div class="stat-grid">
+  <div class="cardx stat-card"><div class="stat-icon"><i data-lucide="users"></i></div><div class="stat-label">Total Registered</div><div class="stat-value" id="s-total">–</div><div class="stat-meta">Institution roster</div></div>
+  <div class="cardx stat-card"><div class="stat-icon" style="color:#18b884;background:#eaf8f3"><i data-lucide="circle-check"></i></div><div class="stat-label">Present Today</div><div class="stat-value" id="s-marked">–</div><div class="stat-meta"><span id="s-late">0</span> late check-ins</div></div>
+  <div class="cardx stat-card"><div class="stat-icon" style="color:#ef4961;background:#fff0f2"><i data-lucide="user-x"></i></div><div class="stat-label">Absent Today</div><div class="stat-value" id="s-absent">–</div><div class="stat-meta">Needs follow-up</div></div>
+  <div class="cardx stat-card"><div class="stat-icon"><i data-lucide="gauge"></i></div><div class="stat-label">Overall Attendance</div><div class="stat-value" id="s-rate">–</div><div class="progress"><div id="s-bar" class="progress-bar" style="width:0"></div></div></div>
+</div>
+<div class="grid-main">
+  <section class="cardx card-pad">
+    <div class="card-head"><h2>Facility Attendance Trends</h2><span class="badgex badge-info">14 days</span></div>
+    <div class="chart-wrap"><canvas id="trend"></canvas></div>
+  </section>
+  <section class="cardx card-pad">
+    <div class="card-head"><h2>Recent Attendance</h2><span id="dot" class="live-dot"></span></div>
+    <div id="feed" style="min-height:220px"></div>
+  </section>
+</div>
+<div class="grid-2" style="margin-top:14px">
+  <section class="cardx card-pad"><div class="card-head"><h2>Check-ins by Hour</h2><span class="badgex badge-muted">Today</span></div><div class="chart-wrap" style="height:210px"><canvas id="hourly"></canvas></div></section>
+  <section class="cardx card-pad"><div class="card-head"><h2>Attendance Split</h2></div><div class="chart-wrap" style="height:210px"><canvas id="donut"></canvas></div></section>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const mk = (id, cfg) => new Chart($(id), cfg);
+const opts = {responsive:true, maintainAspectRatio:false, plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true, ticks:{precision:0}}}};
+const trend  = mk('trend',  {type:'line', data:{labels:[], datasets:[{data:[], borderColor:'#0d6efd', backgroundColor:'rgba(13,110,253,.12)', fill:true, tension:.3}]}, options:opts});
+const hourly = mk('hourly', {type:'bar',  data:{labels:[], datasets:[{data:[], backgroundColor:'#20c997'}]}, options:opts});
+const donut  = mk('donut',  {type:'doughnut', data:{labels:['Present','Late','Absent'], datasets:[{data:[0,0,0], backgroundColor:['#198754','#ffc107','#dc3545']}]},
+                 options:{responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'bottom'}}}});
+let lastTop = null;
+
+function render(d) {
+  const s = d.summary;
+  $('s-total').textContent = s.total; $('s-marked').textContent = s.marked; $('s-late').textContent = s.late;
+  $('s-absent').textContent = s.absent; $('s-rate').textContent = s.rate + '%'; $('s-bar').style.width = s.rate + '%';
+  trend.data.labels = d.trend.labels.map(x => x.slice(5)); trend.data.datasets[0].data = d.trend.values; trend.update('none');
+  hourly.data.labels = d.hourly.labels; hourly.data.datasets[0].data = d.hourly.values; hourly.update('none');
+  donut.data.datasets[0].data = [s.present, s.late, s.absent]; donut.update('none');
+
+  const key = d.recent.length ? d.recent[0].name + d.recent[0].date + d.recent[0].time : null;
+  const isNew = lastTop !== null && key !== lastTop;
+  lastTop = key;
+  const feed = $('feed'); feed.innerHTML = '';
+  if (!d.recent.length) feed.innerHTML = '<div style="color:#99a5b7;padding:30px 0;text-align:center">No check-ins yet.</div>';
+  d.recent.forEach((r, i) => {
+    const row=document.createElement('div'); row.style.cssText='display:flex;align-items:center;gap:9px;padding:9px 0;border-bottom:1px solid #f0f3f8';
+    const pic=document.createElement('div'); pic.className='person-pic'; pic.textContent=r.name.split(' ').map(x=>x[0]).slice(0,2).join('').toUpper();
+    const person=document.createElement('div'); person.style.flex='1'; person.innerHTML='<div class="person-name">'+r.name+'</div><div class="person-sub">'+r.time+' · '+r.method+'</div>';
+    const badge=document.createElement('span'); badge.className='badgex '+(r.status==='Late'?'badge-warning':'badge-success'); badge.textContent=r.status;
+    row.append(pic,person,badge); feed.appendChild(row);
+  });
+}
+
+async function tick() {
+  try {
+    const r = await fetch('{{ url_for("api_live", date=today) }}', {headers:{'Accept':'application/json'}});
+    if (r.redirected) { location.href = r.url; return; }
+    render(await r.json());
+    $('dot').classList.add('on');
+  } catch (e) { $('dot').classList.remove('on'); }
+}
+tick(); setInterval(tick, 3000);
+</script>
+{% endblock %}
