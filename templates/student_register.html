@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Student Registration{% endblock %}
+{% block content %}
+<div class="login-page">
+  <section class="login-visual">
+    <div class="login-brand"><span class="brand-mark">A</span> AttendAI <small>STUDENT ENROLMENT</small></div>
+    <div class="login-copy">
+      <div class="eyebrow" style="color:#91b6ff">NEW STUDENT</div>
+      <h1>Register for attendance.</h1>
+      <p>Enter your student details. Once an administrator captures your face profile, the camera will mark your attendance automatically when you are recognised.</p>
+    </div>
+  </section>
+  <section class="login-form-side">
+    <form class="login-form" method="post">
+      <a class="btnx" href="{{ url_for('landing') }}">← Back to landing page</a>
+      <div class="eyebrow" style="margin-top:22px">STUDENT PORTAL</div>
+      <h2>Student registration</h2>
+      <p style="color:var(--muted);font-size:12px">All fields marked with * are required.</p>
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for category, message in messages %}
+          <div class="alertx alert-{{ category }}" role="alert">{{ message }}</div>
+        {% endfor %}
+      {% endwith %}
+      <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+      <label for="name">Full name *</label><input class="form-control" id="name" name="name" required maxlength="40" autofocus>
+      <label for="roll_no">Roll number *</label><input class="form-control" id="roll_no" name="roll_no" required maxlength="50">
+      <label for="department">Department</label><input class="form-control" id="department" name="department" maxlength="80" placeholder="e.g. Computer Science">
+      <label for="email">Email address</label><input class="form-control" id="email" name="email" type="email" maxlength="120">
+      <label for="password">Create password *</label><input class="form-control" id="password" name="password" type="password" minlength="8" required autocomplete="new-password">
+      <label for="password_confirm">Confirm password *</label><input class="form-control" id="password_confirm" name="password_confirm" type="password" minlength="8" required autocomplete="new-password">
+      <button class="login-submit" type="submit">Register student</button>
+      <p style="color:var(--muted);font-size:11px;line-height:1.6;margin-top:16px">Already registered? <a href="{{ url_for('student_login') }}">Student sign in</a><br>Registration does not mark attendance. An administrator must first capture your face profile in the system.</p>
+    </form>
+  </section>
+</div>
+{% endblock %}

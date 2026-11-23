@@ -80,17 +80,18 @@ def inject_globals():
             "role": session.get("role")}
 
 
-VALID_ROLES = frozenset({"admin", "teacher"})
+STAFF_ROLES = frozenset({"admin", "teacher"})
+VALID_ROLES = STAFF_ROLES | {"student"}
 
 
-def login_required(admin_only=False):
+def login_required(admin_only=False, roles=None):
     """Require an authenticated staff member and enforce the route's role policy.
 
     Teachers may use normal staff routes.  Routes marked ``admin_only`` are
     reserved for administrators; API clients receive a JSON 403 while browser
     users are sent back to the dashboard with an explanatory message.
     """
-    allowed_roles = {"admin"} if admin_only else VALID_ROLES
+    allowed_roles = set(roles) if roles is not None else ({"admin"} if admin_only else STAFF_ROLES)
 
     def deco(fn):
         @wraps(fn)
@@ -102,8 +103,8 @@ def login_required(admin_only=False):
             if session.get("role") not in allowed_roles:
                 if request.path.startswith("/api/"):
                     return jsonify(error="Admin access required." if admin_only else "Access denied."), 403
-                flash("Admin access required.", "danger")
-                return redirect(url_for("dashboard"))
+                flash("Admin access required." if admin_only else "Access denied.", "danger")
+                return redirect(url_for("student_portal" if session.get("role") == "student" else "dashboard"))
             return fn(*a, **kw)
         return wrapper
     return deco
@@ -203,7 +204,105 @@ def login():
 @app.route("/logout")
 def logout():
     session.clear()
-    return redirect(url_for("login"))
+    return redirect(url_for("landing"))
+
+
+@app.route("/student/register", methods=["GET", "POST"])
+def student_register():
+    """Public student enrolment; face capture remains an admin-supervised step."""
+    if request.method == "POST":
+        fields = {key: request.form.get(key, "").strip()
+                  for key in ("name", "roll_no", "email", "department")}
+        password = request.form.get("password", "")
+        password_confirm = request.form.get("password_confirm", "")
+        if not NAME_RE.fullmatch(fields["name"]):
+            flash("Enter a valid name using 2-40 letters, numbers, spaces, ., _, or -.", "danger")
+        elif not fields["roll_no"]:
+            flash("Roll number is required.", "danger")
+        elif len(password) < 8:
+            flash("Password must be at least 8 characters.", "danger")
+        elif password != password_confirm:
+            flash("Passwords do not match.", "danger")
+        else:
+            conn = db.get_conn()
+            try:
+                department_id = db.ensure_department(conn, fields["department"])
+                conn.execute("""INSERT INTO users(name, roll_no, email, department, department_id, password_hash, created_at)
+                                VALUES(?,?,?,?,?,?,?)""",
+                             (fields["name"], fields["roll_no"], fields["email"], fields["department"],
+                              department_id, generate_password_hash(password), datetime.now().isoformat(timespec="seconds")))
+                conn.commit()
+                flash(f"Registration complete for {fields['name']}. You can now sign in; ask an administrator to register your face before attendance can be marked.", "success")
+                return redirect(url_for("student_login"))
+            except sqlite3.IntegrityError:
+                flash("A student with that name is already registered.", "danger")
+            finally:
+                conn.close()
+    return render_template("student_register.html")
+
+
+@app.route("/student/login", methods=["GET", "POST"])
+def student_login():
+    """Sign a student in using their roll number and registration password."""
+    if request.method == "POST":
+        roll_no = request.form.get("roll_no", "").strip()
+        password = request.form.get("password", "")
+        conn = db.get_conn()
+        user = conn.execute("SELECT * FROM users WHERE roll_no=? ORDER BY id LIMIT 1", (roll_no,)).fetchone()
+        conn.close()
+        if user and user["active"] and user["password_hash"] and check_password_hash(user["password_hash"], password):
+            session.clear()
+            session["user"], session["role"], session["student_id"] = user["name"], "student", user["id"]
+            return redirect(url_for("student_portal"))
+        flash("Invalid roll number or password, or the student account is inactive.", "danger")
+    return render_template("student_login.html")
+
+
+@app.route("/student/portal")
+@login_required(roles={"student"})
+def student_portal():
+    """A student can view only their own profile and attendance records."""
+    uid = session.get("student_id")
+    conn = db.get_conn()
+    user = conn.execute("SELECT * FROM users WHERE id=?", (uid,)).fetchone()
+    records = conn.execute("""SELECT date, time, status, method FROM attendance
+                              WHERE user_id=? ORDER BY date DESC, time DESC LIMIT 60""", (uid,)).fetchall()
+    conn.close()
+    if not user:
+        session.clear()
+        return redirect(url_for("student_login"))
+    start = (datetime.now() - timedelta(days=29)).strftime("%Y-%m-%d")
+    working, rows = db.student_report(start, db.today())
+    summary = next((row for row in rows if row["id"] == uid), None)
+    return render_template("student_portal.html", user=user, records=records, summary=summary,
+                           working=working, has_face=db.has_face_data(user["name"]))
+
+
+@app.route("/api/student/attendance", methods=["POST"])
+@login_required(roles={"student"})
+def api_student_attendance():
+    """Mark attendance only after the live frame matches the signed-in student."""
+    uid = session.get("student_id")
+    conn = db.get_conn()
+    user = conn.execute("SELECT id, name, active FROM users WHERE id=?", (uid,)).fetchone()
+    conn.close()
+    if not user or not user["active"]:
+        return jsonify(error="Student account is inactive or unavailable."), 403
+    if not db.has_face_data(user["name"]):
+        return jsonify(error="Your face profile has not been registered yet. Contact an administrator."), 409
+    img = _image_from_request()
+    try:
+        faces, _ = face_engine.recognize(img)
+    except RuntimeError as error:
+        return jsonify(error=str(error)), 503
+    match = next((face for face in faces if face["name"] == user["name"]), None)
+    if not match:
+        return jsonify(error="Face verification failed. Ensure only your face is visible and try again."), 401
+    confidence = round(max(0.0, 1 - match["distance"] / face_engine.THRESHOLD), 2)
+    inserted, status = db.log_attendance(user["name"], "student_portal", confidence, allow_create=False)
+    return jsonify(ok=True, marked=inserted, status=status, confidence=confidence,
+                   message=("Attendance marked successfully." if inserted else
+                            "Attendance was already marked for today."))
 
 
 @app.route("/account", methods=["GET", "POST"])
@@ -251,8 +350,16 @@ def api_audit_log():
     return jsonify(entries=[dict(row) for row in rows])
 
 
-# ---------------------------------------------------------------- dashboard
+# ---------------------------------------------------------------- landing + dashboard
 @app.route("/")
+def landing():
+    """Public entry point with working sign-in and teacher sign-up flows."""
+    if "user" in session:
+        return redirect(url_for("student_portal" if session.get("role") == "student" else "dashboard"))
+    return render_template("landing.html")
+
+
+@app.route("/dashboard")
 @login_required()
 def dashboard():
     date = request.args.get("date") or db.today()

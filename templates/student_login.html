@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block title %}Student Sign In{% endblock %}
+{% block content %}
+<div class="login-page"><section class="login-visual"><div class="login-brand"><span class="brand-mark">A</span> AttendAI <small>STUDENT PORTAL</small></div><div class="login-copy"><div class="eyebrow" style="color:#91b6ff">STUDENT ACCESS</div><h1>View your attendance.</h1><p>Sign in with the roll number and password created during registration to see your own attendance record.</p></div></section>
+<section class="login-form-side"><form class="login-form" method="post"><a class="btnx" href="{{ url_for('landing') }}">← Back to landing page</a><div class="eyebrow" style="margin-top:22px">STUDENT PORTAL</div><h2>Student sign in</h2>
+{% with messages = get_flashed_messages(with_categories=true) %}{% for category, message in messages %}<div class="alertx alert-{{ category }}" role="alert">{{ message }}</div>{% endfor %}{% endwith %}
+<input type="hidden" name="_csrf" value="{{ csrf_token() }}"><label for="roll_no">Roll number</label><input class="form-control" id="roll_no" name="roll_no" required autofocus autocomplete="username"><label for="password">Password</label><input class="form-control" id="password" name="password" type="password" required autocomplete="current-password"><button class="login-submit" type="submit">Sign in</button><p style="color:var(--muted);font-size:11px;margin-top:16px">New student? <a href="{{ url_for('student_register') }}">Register here</a></p></form></section></div>
+{% endblock %}

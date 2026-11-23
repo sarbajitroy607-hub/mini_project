@@ -44,6 +44,7 @@ def init_db():
         email       TEXT,
         department  TEXT,
         department_id INTEGER REFERENCES departments(id) ON DELETE SET NULL,
+        password_hash TEXT,
         active      INTEGER NOT NULL DEFAULT 1,
         created_at  TEXT NOT NULL
     );
@@ -90,6 +91,8 @@ def init_db():
     user_cols = _columns(conn, "users")
     if "department_id" not in user_cols:
         conn.execute("ALTER TABLE users ADD COLUMN department_id INTEGER")
+    if "password_hash" not in user_cols:
+        conn.execute("ALTER TABLE users ADD COLUMN password_hash TEXT")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_att_date ON attendance(date)")
     # One attendance record per registered user per calendar day. The original
     # name/date constraint remains for backward compatibility with old data.

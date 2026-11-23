@@ -8,7 +8,7 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-{% if current_user %}<div class="app-shell">
+{% if current_user and role != 'student' %}<div class="app-shell">
   <aside class="sidebar">
     <div class="brand"><div class="brand-mark">A</div><div class="brand-name">AttendAI<small>ATTENDANCE OS</small></div></div>
     <div class="side-section">MAIN SYSTEMS</div>
@@ -26,7 +26,7 @@
   <div class="app-main">
     <header class="topbar">
       <form class="search" method="get" action="{{ url_for('users') }}"><i data-lucide="search" style="width:16px;height:16px"></i><input name="q" placeholder="Search student, employee, or biometric"></form>
-      <div class="top-status"><span class="status-dot"></span><span class="status-text">Edge Engine: <strong>Online</strong></span><span class="status-text">Stream: <strong>Connected</strong></span><a href="{{ url_for('account') }}" class="avatar" title="{{ current_user }}">{{ current_user[0]|upper }}</a></div>
+      <div class="top-status"><span class="status-dot"></span><span class="status-text">Edge Engine: <strong>Online</strong></span><span class="status-text">Stream: <strong>Connected</strong></span><a href="{{ url_for('account') }}" class="avatar" title="Account: {{ current_user }}">{{ current_user[0]|upper }}</a><a class="top-logout" href="{{ url_for('logout') }}" title="Log out and return to the landing page"><i data-lucide="log-out"></i><span>Logout</span></a></div>
     </header>
     <main class="content">
       {% with msgs = get_flashed_messages(with_categories=true) %}
@@ -34,7 +34,7 @@
       {% endwith %}
 {% endif %}
 {% block content %}{% endblock %}
-{% if current_user %}</main></div></div>{% endif %}
+{% if current_user and role != 'student' %}</main></div></div>{% endif %}
 <script>window.lucide && lucide.createIcons();</script>
 {% block scripts %}{% endblock %}
 </body>
