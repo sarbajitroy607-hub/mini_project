@@ -1,18 +1,300 @@
 {% extends "base.html" %}
 {% block title %}My Attendance{% endblock %}
 {% block content %}
-<div class="login-page"><section class="login-visual"><div class="login-brand"><span class="brand-mark">A</span> AttendAI <small>STUDENT PORTAL</small></div><div class="login-copy"><div class="eyebrow" style="color:#91b6ff">WELCOME, {{ user.name|upper }}</div><h1>Your attendance profile.</h1><p>Attendance is marked by the campus camera after your face profile has been registered by an administrator.</p><a class="btnx" href="{{ url_for('logout') }}" style="margin-top:18px">Log out</a></div></section>
-<section class="login-form-side"><div class="login-form" style="width:min(580px,100%)"><div style="display:flex;justify-content:space-between;align-items:center;gap:12px"><div class="eyebrow" style="margin:0">MY ATTENDANCE</div><a class="btnx danger" href="{{ url_for('logout') }}" aria-label="Log out and return to the landing page">Log out</a></div><h2>{{ user.name }}</h2><p style="color:var(--muted);font-size:12px">{{ user.roll_no }}{% if user.department %} · {{ user.department }}{% endif %}</p>
-<div class="cardx card-pad" style="margin:20px 0"><strong>Face profile:</strong> <span class="badgex {{ 'badge-success' if has_face else 'badge-warning' }}">{{ 'Registered' if has_face else 'Awaiting registration' }}</span>{% if summary %}<p style="margin:13px 0 0;color:var(--muted);font-size:12px">Last 30 days: {{ summary.attended }} attended, {{ summary.absent }} absent of {{ working }} working day(s) · {{ summary.percent }}%</p>{% endif %}</div>
-<div class="cardx card-pad" style="margin:20px 0"><h3 style="font-size:15px;margin:0 0 6px">Mark today's attendance</h3><p style="color:var(--muted);font-size:12px;margin:0 0 12px">Start the camera, keep only your face in view, and verify your identity.</p>{% if not has_face %}<div class="alertx alert-warning">Your camera can be tested below, but attendance verification is locked until an administrator completes your face registration.</div>{% endif %}<div class="position-relative" style="background:#0b132b;border-radius:9px;overflow:hidden;aspect-ratio:16/9"><video id="video" autoplay playsinline muted style="display:block;width:100%;height:100%;object-fit:cover"></video><div id="cameraPlaceholder" style="position:absolute;inset:0;display:grid;place-items:center;color:#aebdd8;font-size:12px">Camera is off</div></div><div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap"><button class="btnx primary" type="button" id="cameraButton">Start camera</button><button class="btnx success" type="button" id="checkinButton" disabled>Verify and mark attendance</button></div><p id="checkinMessage" style="min-height:20px;margin:10px 0 0;font-size:12px" aria-live="polite"></p></div>
-<div class="cardx card-pad"><h3 style="font-size:15px;margin:0 0 12px">Recent attendance</h3><table class="tablex"><thead><tr><th>Date</th><th>Time</th><th>Status</th><th>Method</th></tr></thead><tbody>{% for row in records %}<tr><td>{{ row.date }}</td><td>{{ row.time }}</td><td><span class="badgex {{ 'badge-warning' if row.status == 'Late' else 'badge-success' }}">{{ row.status }}</span></td><td>{{ row.method }}</td></tr>{% else %}<tr><td colspan="4" style="color:var(--muted)">No attendance records yet.</td></tr>{% endfor %}</tbody></table></div></div></section></div>
+<div class="login-page">
+  <section class="login-visual">
+    <div class="login-brand"><span class="brand-mark">A</span> AttendAI <small>STUDENT PORTAL</small></div>
+    <div class="login-copy">
+      <div class="eyebrow" style="color:#91b6ff">WELCOME, {{ user.name|upper }}</div>
+      <h1>Your attendance profile.</h1>
+      <p>Attendance is automatically verified by AI face recognition using your registered biometric face profile.</p>
+      <a class="btnx" href="{{ url_for('logout') }}" style="margin-top:18px">Log out</a>
+    </div>
+  </section>
+
+  <section class="login-form-side">
+    <div class="login-form" style="width:min(580px,100%)">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
+        <div class="eyebrow" style="margin:0">MY ATTENDANCE</div>
+        <a class="btnx danger" href="{{ url_for('logout') }}" aria-label="Log out and return to the landing page">Log out</a>
+      </div>
+      <h2>{{ user.name }}</h2>
+      <p style="color:var(--muted);font-size:12px">{{ user.roll_no }}{% if user.department %} · {{ user.department }}{% endif %}</p>
+
+      <div class="cardx card-pad" style="margin:20px 0">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <strong>Face profile:</strong> 
+            <span id="faceStatusBadge" class="badgex {{ 'badge-success' if has_face else 'badge-warning' }}">
+              {{ 'Registered & Active' if has_face else 'Registration Required' }}
+            </span>
+          </div>
+          {% if has_face %}
+          <button class="btnx sm" type="button" id="reEnrollToggleBtn" onclick="toggleEnrollMode()">Re-register face</button>
+          {% endif %}
+        </div>
+        {% if summary %}
+        <p style="margin:13px 0 0;color:var(--muted);font-size:12px">
+          Last 30 days: {{ summary.attended }} attended, {{ summary.absent }} absent of {{ working }} working day(s) · {{ summary.percent }}%
+        </p>
+        {% endif %}
+      </div>
+
+      <!-- Main Camera Box (Attendance / Face Enrollment) -->
+      <div class="cardx card-pad" style="margin:20px 0">
+        <h3 id="panelTitle" style="font-size:15px;margin:0 0 6px">
+          {{ "Mark today's attendance" if has_face else "Register your face profile" }}
+        </h3>
+        <p id="panelDesc" style="color:var(--muted);font-size:12px;margin:0 0 12px">
+          {{ "Start the camera, keep only your face in view, and verify your identity." if has_face else "Start the camera and capture 8-10 photos to activate your biometric attendance." }}
+        </p>
+
+        {% if not has_face %}
+        <div id="enrollNotice" class="alertx alert-warning" style="margin-bottom:12px">
+          <b>Face enrollment required:</b> Capture photos of your face below and click <b>Save face data</b> to register.
+        </div>
+        {% endif %}
+
+        <div class="position-relative" style="background:#0b132b;border-radius:9px;overflow:hidden;aspect-ratio:16/9">
+          <video id="video" autoplay playsinline muted style="display:block;width:100%;height:100%;object-fit:cover"></video>
+          <div id="cameraPlaceholder" style="position:absolute;inset:0;display:grid;place-items:center;color:#aebdd8;font-size:12px">Camera is off</div>
+        </div>
+
+        <!-- Attendance Actions -->
+        <div id="attendanceActions" style="display:{{ 'flex' if has_face else 'none' }};gap:8px;margin-top:12px;flex-wrap:wrap">
+          <button class="btnx primary" type="button" id="cameraButton">Start camera</button>
+          <button class="btnx success" type="button" id="checkinButton" disabled>Verify and mark attendance</button>
+        </div>
+
+        <!-- Enrollment Actions -->
+        <div id="enrollActions" style="display:{{ 'none' if has_face else 'block' }};margin-top:12px">
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btnx primary" type="button" id="enrollCameraButton">Start camera</button>
+            <button class="btnx success" type="button" id="captureBtn" disabled>Capture 1 photo</button>
+            <button class="btnx success" type="button" id="autoCaptureBtn" disabled>Auto-capture 10</button>
+            <button class="btnx" type="button" id="saveProfileBtn" style="background:var(--blue);color:white;border-color:var(--blue)" disabled>Save face data</button>
+          </div>
+          <div style="margin-top:10px">
+            <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--muted);margin-bottom:4px">
+              <span>Enrollment progress:</span>
+              <span><b id="studentPhotoCount">0</b> / 10 photos</span>
+            </div>
+            <div class="progress"><div id="studentProgressBar" class="progress-bar" style="width:0%"></div></div>
+          </div>
+        </div>
+
+        <p id="checkinMessage" style="min-height:20px;margin:10px 0 0;font-size:12px" aria-live="polite"></p>
+      </div>
+
+      <div class="cardx card-pad">
+        <h3 style="font-size:15px;margin:0 0 12px">Recent attendance</h3>
+        <table class="tablex">
+          <thead>
+            <tr><th>Date</th><th>Time</th><th>Status</th><th>Method</th></tr>
+          </thead>
+          <tbody>
+            {% for row in records %}
+            <tr>
+              <td>{{ row.date }}</td>
+              <td>{{ row.time }}</td>
+              <td><span class="badgex {{ 'badge-warning' if row.status == 'Late' else 'badge-success' }}">{{ row.status }}</span></td>
+              <td>{{ row.method }}</td>
+            </tr>
+            {% else %}
+            <tr><td colspan="4" style="color:var(--muted)">No attendance records yet.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</div>
 {% endblock %}
-{% block scripts %}<script>
-const video = document.getElementById('video'), cameraButton = document.getElementById('cameraButton'), checkinButton = document.getElementById('checkinButton'), message = document.getElementById('checkinMessage');
-const faceProfileReady = {{ 'true' if has_face else 'false' }};
-let stream = null;
-function say(text, good) { message.textContent = text; message.style.color = good ? '#08795a' : '#c73b53'; }
-cameraButton.addEventListener('click', async () => { if (stream) { stream.getTracks().forEach(track => track.stop()); stream = null; video.srcObject = null; document.getElementById('cameraPlaceholder').style.display = ''; cameraButton.textContent = 'Start camera'; checkinButton.disabled = true; return; } if (!window.isSecureContext) { say('Camera access is blocked because this page is not secure. Open the app at http://127.0.0.1:5000 or http://localhost:5000.', false); return; } if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { say('Camera access requires Chrome, Edge, or Firefox opened at localhost/127.0.0.1 (or HTTPS).', false); return; } cameraButton.disabled = true; say('Requesting camera permission…', true); try { try { stream = await navigator.mediaDevices.getUserMedia({video:{width:{ideal:640},height:{ideal:480}},audio:false}); } catch (error) { if (error.name !== 'OverconstrainedError') throw error; stream = await navigator.mediaDevices.getUserMedia({video:true,audio:false}); } video.srcObject = stream; await video.play(); document.getElementById('cameraPlaceholder').style.display = 'none'; cameraButton.textContent = 'Stop camera'; checkinButton.disabled = !faceProfileReady; say(faceProfileReady ? 'Camera ready. Verify when your face is clearly visible.' : 'Camera works. Face registration is still required before attendance can be verified.', true); } catch (error) { const help = error.name === 'NotAllowedError' ? ' Allow Camera for this site in your browser address bar, then try again.' : error.name === 'NotFoundError' ? ' No camera was detected. Connect or enable a webcam, then try again.' : error.name === 'NotReadableError' ? ' Another application is using the camera. Close it and try again.' : ' Open the app at http://127.0.0.1:5000 and try again.'; say('Camera access failed (' + error.name + '): ' + error.message + '.' + help, false); } finally { cameraButton.disabled = false; } });
-checkinButton.addEventListener('click', async () => { const canvas = document.createElement('canvas'); canvas.width = video.videoWidth; canvas.height = video.videoHeight; canvas.getContext('2d').drawImage(video, 0, 0); const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', .9)); if (!blob) { say('Could not capture the camera image.', false); return; } checkinButton.disabled = true; say('Verifying your face…', true); const data = new FormData(); data.append('image', blob, 'checkin.jpg'); try { const response = await fetch('{{ url_for("api_student_attendance") }}', {method:'POST',body:data,headers:{'X-CSRF-Token':'{{ csrf_token() }}'}}); const result = await response.json(); if (!response.ok) throw new Error(result.error || 'Verification failed.'); say(result.message + ' Match confidence: ' + Math.round(result.confidence * 100) + '%.', true); if (result.marked) window.setTimeout(() => location.reload(), 1100); } catch (error) { say(error.message, false); } finally { checkinButton.disabled = !stream; } });
+
+{% block scripts %}
+<script>
+const video = document.getElementById('video'),
+      cameraPlaceholder = document.getElementById('cameraPlaceholder'),
+      cameraButton = document.getElementById('cameraButton'),
+      checkinButton = document.getElementById('checkinButton'),
+      enrollCameraButton = document.getElementById('enrollCameraButton'),
+      captureBtn = document.getElementById('captureBtn'),
+      autoCaptureBtn = document.getElementById('autoCaptureBtn'),
+      saveProfileBtn = document.getElementById('saveProfileBtn'),
+      message = document.getElementById('checkinMessage'),
+      studentPhotoCount = document.getElementById('studentPhotoCount'),
+      studentProgressBar = document.getElementById('studentProgressBar');
+
+let faceProfileReady = {{ 'true' if has_face else 'false' }};
+let isEnrollMode = !faceProfileReady;
+let stream = null, busy = false, photoCount = 0;
+const H = {'X-CSRF-Token': '{{ csrf_token() }}'};
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+function say(text, good) {
+  message.textContent = text;
+  message.style.color = good === true ? '#08795a' : good === false ? '#cf3d55' : '#d97706';
+}
+
+function toggleEnrollMode() {
+  isEnrollMode = !isEnrollMode;
+  if (stream) stopCamera();
+  document.getElementById('attendanceActions').style.display = isEnrollMode ? 'none' : 'flex';
+  document.getElementById('enrollActions').style.display = isEnrollMode ? 'block' : 'none';
+  document.getElementById('panelTitle').textContent = isEnrollMode ? 'Register your face profile' : "Mark today's attendance";
+  document.getElementById('panelDesc').textContent = isEnrollMode ? 'Capture photos and save your profile to activate face recognition.' : 'Start the camera, keep only your face in view, and verify your identity.';
+  const toggleBtn = document.getElementById('reEnrollToggleBtn');
+  if (toggleBtn) toggleBtn.textContent = isEnrollMode ? 'Back to attendance' : 'Re-register face';
+}
+
+async function startCamera() {
+  if (!window.isSecureContext) {
+    say('Camera access blocked: page is not secure. Use http://127.0.0.1:5000 or http://localhost:5000.', false);
+    return false;
+  }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    say('Camera access is not supported in this browser.', false);
+    return false;
+  }
+  say('Starting camera…', null);
+  try {
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({video:{width:{ideal:640},height:{ideal:480}},audio:false});
+    } catch (e) {
+      if (e.name !== 'OverconstrainedError') throw e;
+      stream = await navigator.mediaDevices.getUserMedia({video:true,audio:false});
+    }
+    video.srcObject = stream;
+    await video.play();
+    cameraPlaceholder.style.display = 'none';
+    if (cameraButton) cameraButton.textContent = 'Stop camera';
+    if (enrollCameraButton) enrollCameraButton.textContent = 'Stop camera';
+    if (checkinButton) checkinButton.disabled = !faceProfileReady;
+    if (captureBtn) captureBtn.disabled = autoCaptureBtn.disabled = false;
+    say('Camera ready.', true);
+    return true;
+  } catch (err) {
+    const help = err.name === 'NotAllowedError' ? ' (permission denied - allow camera access in your browser).' : '';
+    say('Cannot open camera: ' + err.message + help, false);
+    return false;
+  }
+}
+
+function stopCamera() {
+  if (stream) {
+    stream.getTracks().forEach(track => track.stop());
+    stream = null;
+  }
+  video.srcObject = null;
+  cameraPlaceholder.style.display = '';
+  if (cameraButton) cameraButton.textContent = 'Start camera';
+  if (enrollCameraButton) enrollCameraButton.textContent = 'Start camera';
+  if (checkinButton) checkinButton.disabled = true;
+  if (captureBtn) captureBtn.disabled = autoCaptureBtn.disabled = true;
+  say('Camera off.', null);
+}
+
+cameraButton && cameraButton.addEventListener('click', () => stream ? stopCamera() : startCamera());
+enrollCameraButton && enrollCameraButton.addEventListener('click', () => stream ? stopCamera() : startCamera());
+
+// Attendance Check-in
+checkinButton && checkinButton.addEventListener('click', async () => {
+  if (!video.videoWidth) { say('Camera not ready.', false); return; }
+  const canvas = document.createElement('canvas');
+  canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+  canvas.getContext('2d').drawImage(video, 0, 0);
+  const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.9));
+  if (!blob) { say('Could not capture frame.', false); return; }
+  checkinButton.disabled = true;
+  say('Verifying your face with AI model…', true);
+  const data = new FormData();
+  data.append('image', blob, 'checkin.jpg');
+  try {
+    const res = await fetch('{{ url_for("api_student_attendance") }}', {method: 'POST', body: data, headers: H});
+    let result;
+    try { result = await res.json(); } catch { throw new Error('Server error'); }
+    if (!res.ok) throw new Error(result.error || 'Verification failed.');
+    say(result.message + ' Match confidence: ' + Math.round(result.confidence * 100) + '%.', true);
+    if (result.marked) window.setTimeout(() => location.reload(), 1200);
+  } catch (error) {
+    say(error.message, false);
+  } finally {
+    checkinButton.disabled = !stream;
+  }
+});
+
+// Student Face Enrollment
+async function captureEnrollPhoto() {
+  if (!video.videoWidth) { say('Camera is not ready yet.', false); return false; }
+  const canvas = document.createElement('canvas');
+  canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+  canvas.getContext('2d').drawImage(video, 0, 0);
+  const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.92));
+  if (!blob) return false;
+  const fd = new FormData();
+  fd.append('image', blob, 'enroll.jpg');
+  try {
+    const res = await fetch('{{ url_for("api_student_face_photo") }}', {method: 'POST', body: fd, headers: H});
+    let d;
+    try { d = await res.json(); } catch { throw new Error('Server error'); }
+    if (!res.ok) { say(d.error || d.message || 'Error uploading photo', false); return false; }
+    photoCount = d.count;
+    studentPhotoCount.textContent = photoCount;
+    studentProgressBar.style.width = Math.min(photoCount * 10, 100) + '%';
+    saveProfileBtn.disabled = photoCount < 3;
+    say(d.message, d.ok);
+    return d.ok;
+  } catch (e) {
+    say('Failed to capture photo: ' + e.message, false);
+    return false;
+  }
+}
+
+captureBtn && captureBtn.addEventListener('click', async () => {
+  if (busy) return;
+  busy = true;
+  captureBtn.disabled = autoCaptureBtn.disabled = true;
+  await captureEnrollPhoto();
+  busy = false;
+  captureBtn.disabled = autoCaptureBtn.disabled = false;
+});
+
+autoCaptureBtn && autoCaptureBtn.addEventListener('click', async () => {
+  if (busy) return;
+  busy = true;
+  captureBtn.disabled = autoCaptureBtn.disabled = true;
+  let got = 0, tries = 0;
+  while (got < 10 && tries < 25) {
+    tries++;
+    say('Capturing ' + (got + 1) + '/10 – slowly tilt or turn head slightly…', true);
+    if (await captureEnrollPhoto()) got++;
+    await sleep(650);
+  }
+  say(got + ' photo(s) captured. Click "Save face data" to complete enrollment.', got >= 3);
+  busy = false;
+  captureBtn.disabled = autoCaptureBtn.disabled = false;
+});
+
+saveProfileBtn && saveProfileBtn.addEventListener('click', async () => {
+  saveProfileBtn.disabled = true;
+  say('Generating 128D biometric vector profile… please wait.', null);
+  try {
+    const res = await fetch('{{ url_for("api_student_face_train") }}', {method: 'POST', headers: H});
+    let d;
+    try { d = await res.json(); } catch { throw new Error('Server error'); }
+    if (res.ok && d.ok) {
+      say('Profile registered successfully! Reloading portal…', true);
+      window.setTimeout(() => location.reload(), 1100);
+    } else {
+      say(d.error || d.message || 'Could not generate face data.', false);
+      saveProfileBtn.disabled = photoCount < 3;
+    }
+  } catch (e) {
+    say('Failed to save profile: ' + e.message, false);
+    saveProfileBtn.disabled = photoCount < 3;
+  }
+});
+
 window.addEventListener('beforeunload', () => stream && stream.getTracks().forEach(track => track.stop()));
-</script>{% endblock %}
+</script>
+{% endblock %}

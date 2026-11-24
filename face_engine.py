@@ -187,12 +187,12 @@ def _photo_quality_error(img, face, cv2):
         return "Face could not be measured. Please reposition and try again."
     gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
     brightness = float(gray.mean())
-    if brightness < 40:
+    if brightness < 30:
         return "The image is too dark. Move to better lighting and try again."
-    if brightness > 225:
+    if brightness > 235:
         return "The image is overexposed. Avoid strong light behind or on your face."
     sharpness = float(cv2.Laplacian(gray, cv2.CV_64F).var())
-    if sharpness < 35:
+    if sharpness < 20:
         return "The image is too blurry. Hold still and let the camera focus."
     return None
 
@@ -221,11 +221,12 @@ def save_photo(name, img):
     with _lock:
         folder = person_folder(name)
         if not folder:
-            nums = [int(f.split("_")[1]) for f in _folders() if f.split("_")[1].isdigit()]
+            nums = [int(f.split("_")[1]) for f in _folders() if len(f.split("_")) > 1 and f.split("_")[1].isdigit()]
             folder = os.path.join(FACES_DIR, f"person_{max(nums, default=0) + 1}_{name}")
-            os.makedirs(folder)
+            os.makedirs(folder, exist_ok=True)
         existing = [int(os.path.splitext(os.path.basename(p))[0].split("_")[-1])
-                    for p in glob.glob(os.path.join(folder, "img_face_*.jpg"))]
+                    for p in glob.glob(os.path.join(folder, "img_face_*.jpg"))
+                    if os.path.splitext(os.path.basename(p))[0].split("_")[-1].isdigit()]
         path = os.path.join(folder, f"img_face_{max(existing, default=0) + 1}.jpg")
         saved = cv2.imwrite(path, img, [cv2.IMWRITE_JPEG_QUALITY, 92])
     if not saved:

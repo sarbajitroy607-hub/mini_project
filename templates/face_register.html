@@ -1,8 +1,21 @@
 {% extends "base.html" %}
 {% block title %}Register face{% endblock %}
 {% block content %}
-<div class="page-head"><div><div class="eyebrow">SECURITY // HARDWARE NODE</div><h1>Biometric Face Enrollment Studio</h1><p>Register a multi-angle face vector profile for {{ user.name }}.</p></div></div>
-{% if not engine_ok %}<div class="alertx alert-danger"><b>Face recognition is not ready:</b> {{ engine_msg }}</div>{% endif %}
+<div class="page-head">
+  <div>
+    <div class="eyebrow">SECURITY // HARDWARE NODE</div>
+    <h1>Biometric Face Enrollment Studio</h1>
+    <p>Register a multi-angle face vector profile for <b>{{ user.name }}</b> ({{ user.roll_no or 'ID #' ~ user.id }}).</p>
+  </div>
+  <div>
+    <a class="btnx" href="{{ url_for('face_registration_hub') }}"><i data-lucide="arrow-left"></i>Face Registration Hub</a>
+  </div>
+</div>
+
+{% if not engine_ok %}
+<div class="alertx alert-danger"><b>Face recognition is not ready:</b> {{ engine_msg }}</div>
+{% endif %}
+
 <div class="grid-main">
   <div class="cardx card-pad">
     <div style="position:relative;background:#09162d;border-radius:9px;overflow:hidden;aspect-ratio:16/9">
@@ -10,27 +23,35 @@
       <div id="placeholder" style="position:absolute;inset:0;display:grid;place-items:center;color:#718096">Camera is off</div>
     </div>
     <div style="display:flex;flex-wrap:wrap;gap:7px;margin-top:12px">
-      <button id="cam" class="btnx" {{ 'disabled' if not engine_ok }}>Start camera</button>
-      <button id="one" class="btnx success" disabled>Capture 1 photo</button>
-      <button id="auto" class="btnx success" disabled>Auto-capture 10</button>
-      <button id="train" class="btnx primary" disabled>Save face data</button>
+      <button id="cam" class="btnx" type="button" {{ 'disabled' if not engine_ok }}>Start camera</button>
+      <button id="one" class="btnx success" type="button" disabled>Capture 1 photo</button>
+      <button id="auto" class="btnx success" type="button" disabled>Auto-capture 10</button>
+      <button id="train" class="btnx primary" type="button" disabled>Save face data</button>
     </div>
-    <div id="msg" style="margin-top:9px;font-size:11px"></div>
+    <div id="msg" style="margin-top:10px;font-size:12px;min-height:18px"></div>
   </div>
   <div class="cardx card-pad">
-    <div class="card-head"><h2>Photos captured: <span id="count">{{ count }}</span></h2></div>
+    <div class="card-head">
+      <h2>Photos captured: <span id="count">{{ count }}</span></h2>
+      <span id="enrollBadge" class="badgex {{ 'badge-success' if count >= 3 else 'badge-muted' }}">
+        {{ 'Ready to Save' if count >= 3 else 'Needs Photos' }}
+      </span>
+    </div>
     <div class="progress"><div id="bar" class="progress-bar" style="width:{{ [count * 10, 100]|min }}%"></div></div>
     <ul style="color:#7f8da3;font-size:11px;line-height:1.8;padding-left:18px;margin-top:16px">
       <li>Only one person in the frame, face clearly visible.</li>
       <li>Good light on the face; no strong light behind you.</li>
-      <li>During auto-capture, slowly turn your head a little left, right, up and down.</li>
-      <li>Take 8–10 photos, then press <b>Save face data</b>.</li>
+      <li>During auto-capture, slowly turn your head slightly left, right, up and down.</li>
+      <li>Take 8–10 photos, then press <b>Save face data</b> to build the biometric profile.</li>
     </ul>
-    <form style="margin-top:18px" method="post" action="{{ url_for('face_delete', uid=user.id) }}" onsubmit="return confirm('Delete all face photos and data for {{ user.name }}?')">
-      <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
-      <button class="btnx danger sm">Discard &amp; remove</button>
+    <div style="margin-top:20px;padding-top:14px;border-top:1px solid var(--line);display:flex;gap:8px;flex-wrap:wrap">
+      <form method="post" action="{{ url_for('face_delete', uid=user.id) }}" onsubmit="return confirm('Delete all face photos and biometric data for {{ user.name }}?')">
+        <input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+        <button class="btnx danger sm" type="submit">Discard &amp; remove photos</button>
+      </form>
+      <a class="btnx sm" href="{{ url_for('face_registration_hub') }}">Back to directory</a>
       <a class="btnx sm" href="{{ url_for('users') }}">Back to users</a>
-    </form>
+    </div>
   </div>
 </div>
 {% endblock %}
@@ -40,37 +61,169 @@ const $ = id => document.getElementById(id), video = $('video'), grab = document
 const H = {'X-CSRF-Token': '{{ csrf_token() }}'};
 let stream = null, busy = false, n = {{ count }};
 const sleep = ms => new Promise(r => setTimeout(r, ms));
-function say(t, cls) { $('msg').className = 'mt-2 small text-' + (cls || 'muted'); $('msg').textContent = t; }
-function setCount(c) { n = c; $('count').textContent = c; $('bar').style.width = Math.min(c * 10, 100) + '%'; $('train').disabled = c < 3 || !stream; }
-function buttons(on) { $('one').disabled = $('auto').disabled = !on; }
+
+function say(t, cls) {
+  const el = $('msg');
+  el.textContent = t;
+  const colors = {
+    danger: '#cf3d55',
+    success: '#08795a',
+    warning: '#d97706',
+    muted: '#718096'
+  };
+  el.style.color = colors[cls] || colors.muted;
+  el.style.fontWeight = cls === 'danger' || cls === 'success' ? '600' : 'normal';
+}
+
+function setCount(c) {
+  n = c;
+  $('count').textContent = c;
+  $('bar').style.width = Math.min(c * 10, 100) + '%';
+  $('train').disabled = c < 3;
+  $('enrollBadge').className = 'badgex ' + (c >= 3 ? 'badge-success' : 'badge-muted');
+  $('enrollBadge').textContent = c >= 3 ? 'Ready to Save' : 'Needs Photos';
+}
+
+function buttons(on) {
+  $('one').disabled = $('auto').disabled = !on;
+}
 
 $('cam').onclick = async () => {
-  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; video.srcObject = null; $('placeholder').style.display = ''; $('cam').textContent = 'Start camera'; buttons(false); $('train').disabled = true; return; }
-  try { stream = await navigator.mediaDevices.getUserMedia({video: {width: {ideal: 640}, height: {ideal: 480}}}); }
-  catch (e) { say('Cannot open the camera: ' + e.message, 'danger'); return; }
-  video.srcObject = stream; await video.play(); $('placeholder').style.display = 'none'; $('cam').textContent = 'Stop camera'; buttons(true); setCount(n); say('Camera ready.');
+  if (stream) {
+    stream.getTracks().forEach(t => t.stop());
+    stream = null;
+    video.srcObject = null;
+    $('placeholder').style.display = '';
+    $('cam').textContent = 'Start camera';
+    buttons(false);
+    $('train').disabled = n < 3;
+    say('Camera stopped.', 'muted');
+    return;
+  }
+
+  if (!window.isSecureContext) {
+    say('Camera access requires a secure context. Open the app at http://127.0.0.1:5000 or http://localhost:5000.', 'danger');
+    return;
+  }
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    say('Camera access is not supported or not permitted in this browser window.', 'danger');
+    return;
+  }
+
+  say('Opening camera…', 'muted');
+  try {
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({video: {width: {ideal: 640}, height: {ideal: 480}}, audio: false});
+    } catch (err) {
+      if (err.name !== 'OverconstrainedError') throw err;
+      stream = await navigator.mediaDevices.getUserMedia({video: true, audio: false});
+    }
+    video.srcObject = stream;
+    await video.play();
+    $('placeholder').style.display = 'none';
+    $('cam').textContent = 'Stop camera';
+    buttons(true);
+    setCount(n);
+    say('Camera ready. Look directly into the camera.', 'success');
+  } catch (e) {
+    const help = e.name === 'NotAllowedError' ? ' (permission denied - check browser camera permissions).'
+               : e.name === 'NotFoundError' ? ' (no camera device found).'
+               : e.name === 'NotReadableError' ? ' (camera is in use by another app).'
+               : '';
+    say('Cannot open camera: ' + e.message + help, 'danger');
+  }
 };
 
 async function capture() {
-  grab.width = video.videoWidth; grab.height = video.videoHeight; grab.getContext('2d').drawImage(video, 0, 0);
+  if (!video.videoWidth || !video.videoHeight) {
+    say('Camera video is not ready yet.', 'warning');
+    return false;
+  }
+  grab.width = video.videoWidth;
+  grab.height = video.videoHeight;
+  grab.getContext('2d').drawImage(video, 0, 0);
   const blob = await new Promise(r => grab.toBlob(r, 'image/jpeg', 0.92));
-  const fd = new FormData(); fd.append('image', blob, 'p.jpg');
-  const r = await fetch('{{ url_for("api_face_photo", uid=user.id) }}', {method: 'POST', body: fd, headers: H});
-  const d = await r.json();
-  if (!r.ok) { say(d.error || d.message || 'Error', 'danger'); return false; }
-  setCount(d.count); say(d.message, d.ok ? 'success' : 'warning'); return d.ok;
+  if (!blob) {
+    say('Could not read frame from camera.', 'danger');
+    return false;
+  }
+
+  const fd = new FormData();
+  fd.append('image', blob, 'p.jpg');
+  try {
+    const r = await fetch('{{ url_for("api_face_photo", uid=user.id) }}', {method: 'POST', body: fd, headers: H});
+    let d;
+    try {
+      d = await r.json();
+    } catch {
+      throw new Error('Server returned unexpected response (status ' + r.status + ')');
+    }
+    if (!r.ok) {
+      say(d.error || d.message || 'Error uploading photo', 'danger');
+      return false;
+    }
+    setCount(d.count);
+    say(d.message, d.ok ? 'success' : 'warning');
+    return d.ok;
+  } catch (err) {
+    say('Photo capture failed: ' + err.message, 'danger');
+    return false;
+  }
 }
-$('one').onclick = async () => { if (busy) return; busy = true; buttons(false); await capture(); busy = false; buttons(true); };
+
+$('one').onclick = async () => {
+  if (busy) return;
+  busy = true;
+  buttons(false);
+  await capture();
+  busy = false;
+  buttons(true);
+};
+
 $('auto').onclick = async () => {
-  if (busy) return; busy = true; buttons(false); let got = 0, tries = 0;
-  while (got < 10 && tries < 25) { tries++; say('Capturing… ' + got + '/10 – move your head slightly'); if (await capture()) got++; await sleep(600); }
-  say(got + ' photo(s) captured. Press "Save face data".', got >= 3 ? 'success' : 'warning'); busy = false; buttons(true);
+  if (busy) return;
+  busy = true;
+  buttons(false);
+  let got = 0, tries = 0;
+  while (got < 10 && tries < 25) {
+    tries++;
+    say('Capturing ' + (got + 1) + '/10 – slowly tilt/turn head slightly…', 'muted');
+    if (await capture()) got++;
+    await sleep(650);
+  }
+  say(got + ' photo(s) captured. Click "Save face data" to generate profile.', got >= 3 ? 'success' : 'warning');
+  busy = false;
+  buttons(true);
 };
+
 $('train').onclick = async () => {
-  $('train').disabled = true; say('Processing photos… this can take a few seconds.');
-  const r = await fetch('{{ url_for("api_face_train", uid=user.id) }}', {method: 'POST', headers: H}); const d = await r.json();
-  say(d.message || d.error, r.ok && d.ok ? 'success' : 'danger'); $('train').disabled = false;
+  $('train').disabled = true;
+  say('Processing photos & generating 128D face profile… please wait.', 'muted');
+  try {
+    const r = await fetch('{{ url_for("api_face_train", uid=user.id) }}', {method: 'POST', headers: H});
+    let d;
+    try {
+      d = await r.json();
+    } catch {
+      throw new Error('Server error (' + r.status + ')');
+    }
+    if (r.ok && d.ok) {
+      say(d.message || 'Face profile saved successfully!', 'success');
+      $('enrollBadge').className = 'badgex badge-success';
+      $('enrollBadge').textContent = 'Profile Active';
+    } else {
+      say(d.error || d.message || 'Could not generate face data.', 'danger');
+    }
+  } catch (err) {
+    say('Failed to save face data: ' + err.message, 'danger');
+  } finally {
+    $('train').disabled = n < 3;
+  }
 };
+
+// Initialize count on page load
+setCount(n);
+
 window.addEventListener('beforeunload', () => stream && stream.getTracks().forEach(t => t.stop()));
 </script>
 {% endblock %}

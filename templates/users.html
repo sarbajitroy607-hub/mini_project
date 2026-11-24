@@ -25,8 +25,9 @@
       <td><a class="person" href="{{ url_for('user_detail', uid=u.id) }}" style="text-decoration:none"><div class="person-pic">{{ u.name[:1]|upper }}</div><div><div class="person-name">{{ u.name }}</div><div class="person-sub">ID · {{ u.roll_no or '—' }}</div></div></a></td><td>{{ u.roll_no or '' }}</td><td>{{ u.department or '' }}</td><td>{{ u.email or '' }}</td>
       <td>{% if face[u.name] %}<span class="badgex badge-success">Captured</span>{% else %}<span class="badgex badge-muted">None</span>{% endif %}</td>
       <td><span class="badgex {{ 'badge-success' if u.active else 'badge-danger' }}">{{ 'Active' if u.active else 'Inactive' }}</span></td>
-      <td class="text-end text-nowrap">{% if role == 'admin' %}
-        <a class="btnx sm success" href="{{ url_for('face_register', uid=u.id) }}"><i data-lucide="scan-face"></i></a>
+      <td class="text-end text-nowrap">
+        <a class="btnx sm success" href="{{ url_for('face_register', uid=u.id) }}" title="Register face profile"><i data-lucide="scan-face"></i></a>
+        {% if role == 'admin' %}
         <a class="btnx sm" href="{{ url_for('user_form', uid=u.id) }}"><i data-lucide="pencil"></i></a>
         <form style="display:inline" method="post" action="{{ url_for('user_toggle', uid=u.id) }}"><input type="hidden" name="_csrf" value="{{ csrf_token() }}"><button class="btnx sm">{{ 'Deactivate' if u.active else 'Activate' }}</button></form>
         <form style="display:inline" method="post" action="{{ url_for('user_delete', uid=u.id) }}" onsubmit="return confirm('Delete {{ u.name }} and ALL their attendance records?')"><input type="hidden" name="_csrf" value="{{ csrf_token() }}"><button class="btnx sm danger"><i data-lucide="trash-2"></i></button></form>{% endif %}</td>

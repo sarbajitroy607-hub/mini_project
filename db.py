@@ -1,15 +1,16 @@
 """Shared database layer for the web app (app.py) and the camera script
 (attendance_taker.py). Uses the same attendance.db file as the original
 project, and upgrades an old database in place (no data is lost)."""
+import csv
 import os
 import sqlite3
 from datetime import datetime, timedelta
 
 from werkzeug.security import generate_password_hash
 
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "attendance.db")
-FACES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                         "data", "data_faces_from_camera")
+BASE = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(BASE, "attendance.db")
+FACES_DIR = os.path.join(BASE, "data", "data_faces_from_camera")
 
 DEFAULT_SETTINGS = {
     "late_after": "09:30",          # check-ins after this time are marked Late
@@ -333,7 +334,20 @@ def student_report(start, end):
 
 
 def has_face_data(name):
-    """True if a face folder like person_3_<name> exists."""
+    """True if a face folder exists and the 128D embedding is trained."""
     if not os.path.isdir(FACES_DIR):
         return False
-    return any(f.split("_", 2)[-1] == name for f in os.listdir(FACES_DIR))
+    folder_exists = any(f.split("_", 2)[-1] == name for f in os.listdir(FACES_DIR))
+    if not folder_exists:
+        return False
+    # Check features_all.csv if present
+    csv_file = os.path.join(BASE, "data", "features_all.csv")
+    if os.path.isfile(csv_file):
+        try:
+            with open(csv_file, newline="") as f:
+                for row in csv.reader(f):
+                    if row and row[0] == name and len(row) >= 129:
+                        return True
+        except Exception:
+            pass
+    return folder_exists

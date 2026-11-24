@@ -50,6 +50,17 @@ def check_csrf():
         abort(400, "Invalid CSRF token - go back, refresh the page and try again.")
 
 
+@app.errorhandler(400)
+@app.errorhandler(403)
+@app.errorhandler(404)
+def handle_api_http_errors(e):
+    if request.path.startswith("/api/"):
+        code = getattr(e, "code", 400)
+        desc = getattr(e, "description", str(e))
+        return jsonify(error=desc), code
+    return e
+
+
 @app.after_request
 def camera_security_headers(response):
     """Keep webcam access scoped to this Flask origin."""
@@ -303,6 +314,58 @@ def api_student_attendance():
     return jsonify(ok=True, marked=inserted, status=status, confidence=confidence,
                    message=("Attendance marked successfully." if inserted else
                             "Attendance was already marked for today."))
+
+
+@app.route("/api/student/face/photo", methods=["POST"])
+@login_required(roles={"student"})
+def api_student_face_photo():
+    """Allow a signed-in student to submit a photo for their face enrollment."""
+    uid = session.get("student_id")
+    conn = db.get_conn()
+    user = conn.execute("SELECT name FROM users WHERE id=?", (uid,)).fetchone()
+    conn.close()
+    if not user:
+        return jsonify(error="Student not found"), 404
+    name = user["name"]
+    img = _image_from_request()
+    try:
+        ok, msg, count = face_engine.save_photo(name, img)
+    except RuntimeError as e:
+        return jsonify(error=str(e)), 503
+    return jsonify(ok=ok, message=msg, count=count)
+
+
+@app.route("/api/student/face/train", methods=["POST"])
+@login_required(roles={"student"})
+def api_student_face_train():
+    """Compute and save embeddings for the signed-in student's face profile."""
+    uid = session.get("student_id")
+    conn = db.get_conn()
+    user = conn.execute("SELECT name FROM users WHERE id=?", (uid,)).fetchone()
+    conn.close()
+    if not user:
+        return jsonify(error="Student not found"), 404
+    name = user["name"]
+    if face_engine.photo_count(name) < 3:
+        return jsonify(ok=False, message="Capture at least 3 photos first (8-10 is best)."), 400
+    try:
+        ok = face_engine.train(name)
+    except RuntimeError as e:
+        return jsonify(error=str(e)), 503
+    dimension = face_engine.embedding_dimension(name) if ok else 0
+    photos = face_engine.photo_count(name)
+    conn = db.get_conn()
+    try:
+        if ok:
+            db.upsert_face_profile(conn, uid, name, dimension, photos)
+        else:
+            db.delete_face_profile(conn, uid)
+        conn.commit()
+    finally:
+        conn.close()
+    return jsonify(ok=ok, message="Face data saved - your profile is now registered for attendance!" if ok
+                   else "No usable face found in the photos.",
+                   embedding_dimension=dimension, photos_used=photos, user_id=uid)
 
 
 @app.route("/account", methods=["GET", "POST"])
@@ -964,8 +1027,22 @@ def api_scan():
     return jsonify(faces=out)
 
 
+@app.route("/face-registration")
+@login_required()
+def face_registration_hub():
+    """Face Registration directory: view biometric enrollment status and enroll faces."""
+    conn = db.get_conn()
+    users = conn.execute("SELECT id, name, roll_no, department, active FROM users ORDER BY name COLLATE NOCASE").fetchall()
+    conn.close()
+    profiles = {u["name"]: face_engine.photo_count(u["name"]) for u in users}
+    embeddings = {u["name"]: (face_engine.embedding_dimension(u["name"]) > 0) for u in users}
+    ok, msg = face_engine.status()
+    return render_template("face_registration_hub.html", users=users, profiles=profiles,
+                           embeddings=embeddings, engine_ok=ok, engine_msg=msg)
+
+
 @app.route("/users/<int:uid>/face")
-@login_required(admin_only=True)
+@login_required()
 def face_register(uid):
     conn = db.get_conn()
     user = conn.execute("SELECT * FROM users WHERE id=?", (uid,)).fetchone()
@@ -987,7 +1064,7 @@ def _user_name(uid):
 
 
 @app.route("/api/users/<int:uid>/face/photo", methods=["POST"])
-@login_required(admin_only=True)
+@login_required()
 def api_face_photo(uid):
     name = _user_name(uid)
     img = _image_from_request()
@@ -999,7 +1076,7 @@ def api_face_photo(uid):
 
 
 @app.route("/api/users/<int:uid>/face/train", methods=["POST"])
-@login_required(admin_only=True)
+@login_required()
 def api_face_train(uid):
     name = _user_name(uid)
     if face_engine.photo_count(name) < 3:
@@ -1025,7 +1102,7 @@ def api_face_train(uid):
 
 
 @app.route("/api/users/<int:uid>/face/embedding")
-@login_required(admin_only=True)
+@login_required()
 def api_face_embedding_status(uid):
     """Report whether a user's 128D face embedding has been generated.
 
@@ -1043,7 +1120,7 @@ def api_face_embedding_status(uid):
 
 
 @app.route("/users/<int:uid>/face/delete", methods=["POST"])
-@login_required(admin_only=True)
+@login_required()
 def face_delete(uid):
     face_engine.delete_person(_user_name(uid))
     conn = db.get_conn()

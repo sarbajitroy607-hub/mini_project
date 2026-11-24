@@ -15,8 +15,8 @@
     <nav class="side-nav">
       <a class="side-link {{ 'active' if request.endpoint == 'dashboard' }}" href="{{ url_for('dashboard') }}"><i data-lucide="layout-dashboard"></i><span>Admin Dashboard</span></a>
       <a class="side-link {{ 'active' if request.endpoint == 'scan' }}" href="{{ url_for('scan') }}"><i data-lucide="scan-face"></i><span>Live Attendance</span>{% if request.endpoint == 'scan' %}<b class="side-live">LIVE</b>{% endif %}</a>
-      <a class="side-link" href="{{ url_for('users') }}"><i data-lucide="contact"></i><span>Face Registration</span></a>
-      <a class="side-link {{ 'active' if request.endpoint in ['users','user_form','user_detail','face_register'] }}" href="{{ url_for('users') }}"><i data-lucide="users"></i><span>User Management</span></a>
+      <a class="side-link {{ 'active' if request.endpoint in ['face_registration_hub','face_register'] }}" href="{{ url_for('face_registration_hub') }}"><i data-lucide="contact"></i><span>Face Registration</span></a>
+      <a class="side-link {{ 'active' if request.endpoint in ['users','user_form','user_detail'] }}" href="{{ url_for('users') }}"><i data-lucide="users"></i><span>User Management</span></a>
       <a class="side-link {{ 'active' if request.endpoint == 'attendance' }}" href="{{ url_for('attendance') }}"><i data-lucide="clipboard-check"></i><span>Attendance Records</span></a>
       <a class="side-link {{ 'active' if request.endpoint == 'reports' }}" href="{{ url_for('reports') }}"><i data-lucide="chart-no-axes-combined"></i><span>Reports &amp; Analytics</span></a>
       {% if role == 'admin' %}<a class="side-link {{ 'active' if request.endpoint in ['audit_log','account'] }}" href="{{ url_for('audit_log') }}"><i data-lucide="shield-check"></i><span>Audit &amp; System</span></a>{% endif %}

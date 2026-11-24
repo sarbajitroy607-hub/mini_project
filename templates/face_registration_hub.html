@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}Face Registration Hub{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <div class="eyebrow">BIOMETRIC ENGINE // REGISTRATION DIRECTORY</div>
+    <h1>Biometric Face Registration</h1>
+    <p>Enroll, update, and manage multi-angle 128D face profiles for all students and institutional identities.</p>
+  </div>
+  <div style="display:flex;gap:8px">
+    <a class="btnx" href="{{ url_for('scan') }}"><i data-lucide="scan-face"></i>Go to Live Attendance</a>
+    <a class="btnx primary" href="{{ url_for('users') }}"><i data-lucide="users"></i>User Management</a>
+  </div>
+</div>
+
+{% if not engine_ok %}
+<div class="alertx alert-danger">
+  <b>Biometric engine is not ready:</b> {{ engine_msg }}
+</div>
+{% endif %}
+
+<div class="stat-grid" style="grid-template-columns:repeat(3,1fr)">
+  <div class="cardx stat-card">
+    <div class="stat-label">Total Users</div>
+    <div class="stat-value">{{ users|length }}</div>
+    <div class="stat-meta">Active and enrolled students</div>
+  </div>
+  <div class="cardx stat-card">
+    <div class="stat-label">Faces Enrolled &amp; Ready</div>
+    <div class="stat-value" style="color:var(--green)">
+      {% set ns=namespace(enrolled=0) %}
+      {% for u in users %}{% if embeddings.get(u.name) %}{% set ns.enrolled=ns.enrolled+1 %}{% endif %}{% endfor %}
+      {{ ns.enrolled }}
+    </div>
+    <div class="stat-meta">128D biometric vector generated</div>
+  </div>
+  <div class="cardx stat-card">
+    <div class="stat-label">Awaiting Enrollment</div>
+    <div class="stat-value" style="color:var(--red)">
+      {{ (users|length) - ns.enrolled }}
+    </div>
+    <div class="stat-meta">Requires camera enrollment</div>
+  </div>
+</div>
+
+<div class="cardx card-pad" style="margin-top:14px">
+  <div class="card-head">
+    <h2>Student Biometric Enrollment Profiles</h2>
+    <input id="searchInput" placeholder="Search by name, roll no., or department..." class="form-control" style="width:320px;font-size:12px" oninput="filterUsers()">
+  </div>
+
+  <table class="tablex" id="usersTable">
+    <thead>
+      <tr>
+        <th>Student / User</th>
+        <th>Roll Number</th>
+        <th>Department</th>
+        <th>Photos</th>
+        <th>Biometric Status</th>
+        <th style="text-align:right">Action</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for u in users %}
+      {% set count = profiles.get(u.name, 0) %}
+      {% set has_vec = embeddings.get(u.name, false) %}
+      <tr class="user-row" data-search="{{ (u.name ~ ' ' ~ (u.roll_no or '') ~ ' ' ~ (u.department or ''))|lower }}">
+        <td>
+          <div class="person">
+            <div class="person-pic">{{ u.name[:1]|upper }}</div>
+            <div>
+              <div class="person-name">{{ u.name }}</div>
+              <div class="person-sub">ID #{{ u.id }}</div>
+            </div>
+          </div>
+        </td>
+        <td>{{ u.roll_no or '—' }}</td>
+        <td>{{ u.department or '—' }}</td>
+        <td><b>{{ count }}</b> photo{{ 's' if count != 1 else '' }}</td>
+        <td>
+          {% if has_vec %}
+            <span class="badgex badge-success"><i data-lucide="check" style="width:11px;height:11px;margin-right:4px"></i>Enrolled &amp; Active</span>
+          {% elif count >= 3 %}
+            <span class="badgex badge-warning"><i data-lucide="clock" style="width:11px;height:11px;margin-right:4px"></i>Captured (Needs Training)</span>
+          {% else %}
+            <span class="badgex badge-danger"><i data-lucide="alert-circle" style="width:11px;height:11px;margin-right:4px"></i>Not Registered</span>
+          {% endif %}
+        </td>
+        <td style="text-align:right">
+          <a class="btnx sm {{ 'primary' if not has_vec else 'success' }}" href="{{ url_for('face_register', uid=u.id) }}">
+            <i data-lucide="camera"></i>
+            {{ 'Enroll Face' if not has_vec else 'Update Face' }}
+          </a>
+        </td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="6" style="text-align:center;color:var(--muted);padding:30px">
+          No students registered yet. Go to <a href="{{ url_for('users') }}">User Management</a> to enroll students first.
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function filterUsers() {
+  const q = document.getElementById('searchInput').value.toLowerCase().trim();
+  const rows = document.querySelectorAll('.user-row');
+  rows.forEach(r => {
+    const text = r.getAttribute('data-search') || '';
+    r.style.display = text.includes(q) ? '' : 'none';
+  });
+}
+</script>
+{% endblock %}
