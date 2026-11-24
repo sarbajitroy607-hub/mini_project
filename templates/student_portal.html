@@ -214,7 +214,8 @@ checkinButton && checkinButton.addEventListener('click', async () => {
     let result;
     try { result = await res.json(); } catch { throw new Error('Server error'); }
     if (!res.ok) throw new Error(result.error || 'Verification failed.');
-    say(result.message + ' Match confidence: ' + Math.round(result.confidence * 100) + '%.', true);
+    const liveTag = result.liveness_score ? ' · Liveness verified: Real Person (' + Math.round(result.liveness_score * 100) + '%)' : '';
+    say(result.message + liveTag + ' · Match confidence: ' + Math.round(result.confidence * 100) + '%.', true);
     if (result.marked) window.setTimeout(() => location.reload(), 1200);
   } catch (error) {
     say(error.message, false);

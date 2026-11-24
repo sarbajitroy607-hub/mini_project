@@ -1,7 +1,17 @@
 {% extends "base.html" %}
 {% block title %}Scan{% endblock %}
 {% block content %}
-<div class="page-head"><div><div class="eyebrow">ACTIVE OPTICAL STREAM</div><h1>Camera 01: Main Turnstile A</h1><p>Biometric recognition stream · {{ known }} registered face(s)</p></div><div><span class="badgex badge-success">LIVE ATTENDANCE</span></div></div>
+<div class="page-head">
+  <div>
+    <div class="eyebrow">ACTIVE OPTICAL STREAM // MULTI-FACE BATCHING</div>
+    <h1>Camera 01: Main Turnstile A</h1>
+    <p>Biometric recognition stream · {{ known }} registered face(s) · AI Anti-Spoof Liveness Protection</p>
+  </div>
+  <div style="display:flex;gap:8px;align-items:center">
+    <span class="badgex badge-info"><i data-lucide="shield-check" style="width:12px;height:12px;margin-right:4px"></i>Liveness Shield Active</span>
+    <span class="badgex badge-success">LIVE ATTENDANCE</span>
+  </div>
+</div>
 {% if not engine_ok %}
 <div class="alertx alert-danger"><b>Face recognition is not ready:</b> {{ engine_msg }}</div>
 {% elif known == 0 %}
@@ -72,29 +82,63 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 function draw(faces) {
   canvas.width = video.videoWidth; canvas.height = video.videoHeight;
-  ctx.clearRect(0, 0, canvas.width, canvas.height); ctx.lineWidth = 3; ctx.font = '20px sans-serif';
+  ctx.clearRect(0, 0, canvas.width, canvas.height); ctx.lineWidth = 3; ctx.font = '16px sans-serif';
+  let spoofDetected = false;
   faces.forEach(f => {
     const [x, y, w, h] = [f.box[0] * canvas.width, f.box[1] * canvas.height, f.box[2] * canvas.width, f.box[3] * canvas.height];
-    const color = f.status === 'marked' ? '#198754' : f.status === 'already' ? '#0d6efd' : f.status === 'inactive' ? '#fd7e14' : '#dc3545';
+    const isSpoof = f.status === 'spoof' || !f.is_real;
+    if (isSpoof) spoofDetected = true;
+    const color = isSpoof ? '#dc3545' : f.status === 'marked' ? '#198754' : f.status === 'already' ? '#0d6efd' : f.status === 'inactive' ? '#fd7e14' : '#6c757d';
     const confidence = f.confidence === null ? '' : ' · ' + Math.round(f.confidence * 100) + '%';
-    const label = (f.name || 'Unknown') + confidence + (f.status === 'marked' ? ' ✓ marked' : f.status === 'already' ? ' (already marked)' : f.status === 'inactive' ? ' (inactive)' : f.status === 'unregistered' ? ' (not registered)' : '');
-    ctx.strokeStyle = color; ctx.strokeRect(x, y, w, h);
-    const tw = ctx.measureText(label).width + 12; ctx.fillStyle = color; ctx.fillRect(x, Math.max(y - 28, 0), tw, 28);
-    ctx.fillStyle = '#fff'; ctx.fillText(label, x + 6, Math.max(y - 7, 21));
-    if (f.status === 'marked' && !seen.has(f.name)) { seen.add(f.name); addLog(f); }
+    const liveTag = isSpoof ? ' ⚠️ SPOOF DETECTED' : ' · ✓ Live (' + Math.round((f.liveness_score || 1) * 100) + '%)';
+    const label = isSpoof ? (f.label || 'Spoof: Photo/Screen') : ((f.name || 'Unknown') + confidence + liveTag + (f.status === 'marked' ? ' [Marked]' : f.status === 'already' ? ' [Already]' : f.status === 'inactive' ? ' [Inactive]' : f.status === 'unregistered' ? ' [Not Enrolled]' : ''));
+    
+    ctx.strokeStyle = color;
+    if (isSpoof) {
+      ctx.setLineDash([8, 4]);
+      ctx.lineWidth = 4;
+    } else {
+      ctx.setLineDash([]);
+      ctx.lineWidth = 3;
+    }
+    ctx.strokeRect(x, y, w, h);
+    ctx.setLineDash([]);
+    
+    const tw = ctx.measureText(label).width + 12;
+    ctx.fillStyle = color;
+    ctx.fillRect(x, Math.max(y - 26, 0), tw, 26);
+    ctx.fillStyle = '#fff';
+    ctx.fillText(label, x + 6, Math.max(y - 7, 19));
+    
+    if (f.status === 'marked' && !seen.has(f.name)) {
+      seen.add(f.name);
+      addLog(f);
+    } else if (isSpoof && !seen.has('spoof_' + Math.round(x))) {
+      seen.add('spoof_' + Math.round(x));
+      addLog({name: 'Spoof Attempt Blocked', label: f.label || 'Screen/Photo rejected', confidence: f.confidence, is_spoof: true});
+    }
   });
-  const recognized = faces.filter(f => f.name && f.status !== 'unregistered').length;
+  const recognized = faces.filter(f => f.name && f.status !== 'unregistered' && f.status !== 'spoof').length;
   const marked = faces.filter(f => f.status === 'marked').length;
-  recognitionStatus.textContent = !faces.length ? 'No face detected' : marked ? `${marked} attendance record${marked === 1 ? '' : 's'} marked` : recognized ? `${recognized} registered face${recognized === 1 ? '' : 's'} recognized` : 'Face detected but not registered';
+  recognitionStatus.textContent = spoofDetected ? '⚠️ Warning: Screen or photo spoofing detected and blocked!' : !faces.length ? 'No face detected' : marked ? `${marked} attendance record${marked === 1 ? '' : 's'} marked` : recognized ? `${recognized} live face${recognized === 1 ? '' : 's'} recognized` : 'Face detected (unregistered)';
 }
 function addLog(face) {
   if (seen.size === 1) logEl.innerHTML = '';
-  const li = document.createElement('li'); li.className = 'list-group-item px-0 d-flex justify-content-between';
-  const a = document.createElement(face.user_id ? 'a' : 'span'); a.textContent = face.name;
+  const li = document.createElement('li');
+  li.className = 'list-group-item px-0 d-flex justify-content-between align-items-center';
+  li.style.borderBottom = '1px solid #edf1f6';
+  li.style.padding = '8px 0';
+  const a = document.createElement(face.user_id ? 'a' : 'span');
+  a.textContent = face.name;
+  if (face.is_spoof) a.style.color = '#dc3545';
   if (face.user_id) { a.href = userProfileUrl(face.user_id); a.className = 'text-decoration-none'; }
-  const b = document.createElement('span'); b.className = 'small text-muted';
+  const b = document.createElement('span');
+  b.className = 'small';
+  b.style.color = face.is_spoof ? '#dc3545' : '#718096';
+  b.style.fontSize = '11px';
   b.textContent = new Date().toLocaleTimeString() + ' · ' + (face.label || 'Present') + (face.confidence === null ? '' : ' · ' + Math.round(face.confidence * 100) + '%');
-  li.append(a, b); logEl.prepend(li);
+  li.append(a, b);
+  logEl.prepend(li);
 }
 window.addEventListener('beforeunload', () => stream && stream.getTracks().forEach(t => t.stop()));
 </script>

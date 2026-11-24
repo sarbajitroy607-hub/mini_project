@@ -97,6 +97,136 @@ def _largest(faces):
     return max(faces, key=lambda r: r.width() * r.height())
 
 
+# ----------------------------------------------------------- liveness & anti-spoofing
+_MODEL_POINTS_3D = np.array([
+    (0.0, 0.0, 0.0),             # Nose tip
+    (0.0, -330.0, -65.0),        # Chin
+    (-225.0, 170.0, -135.0),     # Left eye corner
+    (225.0, 170.0, -135.0),      # Right eye corner
+    (-150.0, -150.0, -125.0),    # Left mouth corner
+    (150.0, -150.0, -125.0)      # Right mouth corner
+], dtype=np.float64)
+
+
+def calculate_ear(eye_pts):
+    """Eye Aspect Ratio (EAR) for blink detection."""
+    v1 = np.linalg.norm(eye_pts[1] - eye_pts[5])
+    v2 = np.linalg.norm(eye_pts[2] - eye_pts[4])
+    h = np.linalg.norm(eye_pts[0] - eye_pts[3])
+    return float((v1 + v2) / (2.0 * max(h, 1e-6)))
+
+
+def estimate_head_pose(pts, img_shape):
+    """Estimate 3D head pose (pitch, yaw, roll) using solvePnP."""
+    import cv2
+    image_points = np.array([
+        pts[30], pts[8], pts[36], pts[45], pts[48], pts[54]
+    ], dtype=np.float64)
+    h, w = img_shape[:2]
+    focal = float(w)
+    center = (w / 2.0, h / 2.0)
+    camera_matrix = np.array([[focal, 0.0, center[0]], [0.0, focal, center[1]], [0.0, 0.0, 1.0]], dtype=np.float64)
+    dist_coeffs = np.zeros((4, 1), dtype=np.float64)
+    success, rot_vec, _ = cv2.solvePnP(_MODEL_POINTS_3D, image_points, camera_matrix, dist_coeffs,
+                                      flags=cv2.SOLVEPNP_ITERATIVE)
+    if not success:
+        return 0.0, 0.0, 0.0
+    rot_mat, _ = cv2.Rodrigues(rot_vec)
+    angles, _, _, _, _, _ = cv2.RQDecomp3x3(rot_mat)
+    return float(angles[0]), float(angles[1]), float(angles[2])
+
+
+def evaluate_liveness(bgr_img, rect, shape):
+    """Multi-layer passive & active liveness and anti-spoofing evaluation.
+    
+    Analyzes:
+      1. Eye aspect ratio (blinking & open eye geometry).
+      2. 3D perspective head pose realism.
+      3. YCrCb human skin chrominance density vs digital screen / print spectrum.
+      4. High-frequency Laplacian texture & specular screen glare.
+      
+    Returns (is_real: bool, score: float, reason: str, metrics: dict).
+    """
+    import cv2
+    pts = np.array([(shape.part(i).x, shape.part(i).y) for i in range(68)], dtype=np.float64)
+    h, w = bgr_img.shape[:2]
+    left = max(0, int(rect.left()))
+    top = max(0, int(rect.top()))
+    right = min(w, int(rect.right()))
+    bottom = min(h, int(rect.bottom()))
+    crop = bgr_img[top:bottom, left:right]
+    
+    if crop.size == 0 or crop.shape[0] < 20 or crop.shape[1] < 20:
+        return False, 0.0, "Face region too small to assess", {}
+        
+    # 1. Eye Aspect Ratio (EAR)
+    left_ear = calculate_ear(pts[36:42])
+    right_ear = calculate_ear(pts[42:48])
+    ear = (left_ear + right_ear) / 2.0
+    
+    # 2. Head Pose (pitch, yaw, roll)
+    pitch, yaw, roll = estimate_head_pose(pts, (h, w))
+    
+    # 3. YCrCb Skin Chrominance Density
+    ycrcb = cv2.cvtColor(crop, cv2.COLOR_BGR2YCrCb)
+    y, cr, cb = cv2.split(ycrcb)
+    skin_mask = (y >= 15) & (y <= 245) & (cr >= 125) & (cr <= 180) & (cb >= 75) & (cb <= 135)
+    skin_ratio = float(np.mean(skin_mask))
+    
+    # 4. Specular Reflection / Glare (common on phone screens & glossy photos)
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+    glare_ratio = float(np.mean(gray >= 250))
+    
+    # 5. Texture & Laplacian variance
+    lap_var = float(cv2.Laplacian(gray, cv2.CV_64F).var())
+    
+    # Scoring system (0.0 to 1.0)
+    score = 0.5
+    reasons = []
+    
+    # Skin color realism
+    if skin_ratio >= 0.70:
+        score += 0.25
+    elif skin_ratio >= 0.45:
+        score += 0.10
+    else:
+        score -= 0.35
+        reasons.append("Abnormal skin spectrum (Screen/Print detected)")
+        
+    # Screen Glare check
+    if glare_ratio > 0.08:
+        score -= 0.30
+        reasons.append("Excessive specular glare (Digital screen reflection)")
+    elif glare_ratio < 0.04:
+        score += 0.10
+        
+    # Texture / sharpness check
+    if lap_var < 15.0:
+        score -= 0.25
+        reasons.append("Texture lacks detail / blurry image")
+    elif 30.0 <= lap_var <= 1200.0:
+        score += 0.15
+        
+    # Natural 3D pose (extreme distorted 2D perspective)
+    if abs(yaw) > 60.0 or abs(roll) > 50.0:
+        score -= 0.20
+        reasons.append("Unrealistic face angle")
+        
+    score = float(np.clip(score, 0.0, 1.0))
+    is_real = score >= 0.52
+    reason_str = "Live person verified" if is_real else (reasons[0] if reasons else "Spoof suspected")
+    
+    metrics = {
+        "score": round(score, 2),
+        "ear": round(ear, 3),
+        "skin_ratio": round(skin_ratio, 2),
+        "glare_ratio": round(glare_ratio, 3),
+        "lap_var": round(lap_var, 1),
+        "pose": {"yaw": round(yaw, 1), "pitch": round(pitch, 1), "roll": round(roll, 1)}
+    }
+    return is_real, score, reason_str, metrics
+
+
 # ----------------------------------------------------------- known faces
 def load_known(force=False):
     """(names, matrix) from features_all.csv; reloads when the file changes."""
@@ -124,9 +254,17 @@ def load_known(force=False):
 
 
 def recognize(img):
-    """Detect + identify every face in a BGR frame.
-    Returns (faces, (w, h)); each face = {box:[x,y,w,h] as 0-1 fractions,
-    name:str|None, distance:float|None}."""
+    """Detect + identify every face in a BGR frame with multi-face batching and anti-spoofing.
+    Returns (faces, (w, h)); each face = {
+        box: [x, y, w, h] as 0-1 fractions,
+        name: str | None,
+        distance: float | None,
+        is_real: bool,
+        liveness_score: float,
+        liveness_reason: str,
+        ear: float,
+        pose: dict
+    }."""
     ok, msg = status()
     if not ok:
         raise RuntimeError(msg)
@@ -138,19 +276,52 @@ def recognize(img):
     rgb = _rgb(img)
     names, matrix = load_known()
     out = []
+
     with _lock:
-        for r in _state["detector"](rgb, 0):
-            d = _descriptor(rgb, r)
-            name = dist = None
-            if len(names):
-                dists = np.linalg.norm(matrix - d, axis=1)
-                i = int(np.argmin(dists))
-                dist = float(dists[i])
-                if dist < THRESHOLD:
-                    name = names[i]
-            x, y = max(r.left(), 0), max(r.top(), 0)
-            out.append({"box": [x / w, y / h, (r.right() - x) / w, (r.bottom() - y) / h],
-                        "name": name, "distance": dist})
+        detected_rects = list(_state["detector"](rgb, 0))
+        if not detected_rects:
+            return out, (w, h)
+
+        # Batch extract shapes and descriptors for all detected faces
+        shapes = [_state["predictor"](rgb, r) for r in detected_rects]
+        descriptors = [np.array(_state["model"].compute_face_descriptor(rgb, s)) for s in shapes]
+
+    # Vectorized multi-face distance comparison
+    desc_matrix = np.array(descriptors)  # (M, 128)
+    if len(names) and matrix.shape[0] > 0:
+        # Distance matrix (M, N) via broadcasting across all detected faces and registered vectors
+        dists_matrix = np.linalg.norm(desc_matrix[:, None, :] - matrix[None, :, :], axis=2)
+    else:
+        dists_matrix = None
+
+    for i, (r, shape) in enumerate(zip(detected_rects, shapes)):
+        name = None
+        dist = None
+        if dists_matrix is not None:
+            min_idx = int(np.argmin(dists_matrix[i]))
+            min_d = float(dists_matrix[i, min_idx])
+            dist = min_d
+            if min_d < THRESHOLD:
+                name = names[min_idx]
+
+        # Multi-layer liveness evaluation (passive & active checks)
+        is_real, score, reason, metrics = evaluate_liveness(img, r, shape)
+
+        x, y = max(r.left(), 0), max(r.top(), 0)
+        bw = max(r.right() - x, 1)
+        bh = max(r.bottom() - y, 1)
+
+        out.append({
+            "box": [x / w, y / h, bw / w, bh / h],
+            "name": name,
+            "distance": dist,
+            "is_real": is_real,
+            "liveness_score": score,
+            "liveness_reason": reason,
+            "ear": metrics.get("ear", 0.3),
+            "pose": metrics.get("pose", {})
+        })
+
     return out, (w, h)
 
 

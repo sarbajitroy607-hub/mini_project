@@ -309,9 +309,12 @@ def api_student_attendance():
     match = next((face for face in faces if face["name"] == user["name"]), None)
     if not match:
         return jsonify(error="Face verification failed. Ensure only your face is visible and try again."), 401
+    if not match.get("is_real", True):
+        return jsonify(error=f"Liveness check failed ({match.get('liveness_reason', 'Spoof detected')}). Holding up photos or phone screens is not permitted."), 422
     confidence = round(max(0.0, 1 - match["distance"] / face_engine.THRESHOLD), 2)
     inserted, status = db.log_attendance(user["name"], "student_portal", confidence, allow_create=False)
     return jsonify(ok=True, marked=inserted, status=status, confidence=confidence,
+                   liveness_score=match.get("liveness_score", 1.0),
                    message=("Attendance marked successfully." if inserted else
                             "Attendance was already marked for today."))
 
@@ -1013,11 +1016,24 @@ def api_scan():
         conn.close()
     out = []
     for f in faces:
-        item = {"box": f["box"], "name": f["name"], "status": "unknown", "time": None,
-                "user_id": user_ids.get(f["name"]), "confidence": None}
-        if f["name"]:
-            conf = round(max(0.0, 1 - f["distance"] / face_engine.THRESHOLD), 2)
-            item["confidence"] = conf
+        is_real = f.get("is_real", True)
+        conf = round(max(0.0, 1 - f["distance"] / face_engine.THRESHOLD), 2) if f.get("name") and f["distance"] is not None else None
+        item = {
+            "box": f["box"],
+            "name": f["name"],
+            "status": "unknown",
+            "time": None,
+            "user_id": user_ids.get(f["name"]),
+            "confidence": conf,
+            "is_real": is_real,
+            "liveness_score": f.get("liveness_score", 1.0),
+            "liveness_reason": f.get("liveness_reason", "Live"),
+            "ear": f.get("ear", 0.3)
+        }
+        if not is_real:
+            item["status"] = "spoof"
+            item["label"] = f["liveness_reason"]
+        elif f["name"]:
             inserted, status = db.log_attendance(f["name"], "face", conf, allow_create=False)
             item["status"] = ("inactive" if status == "inactive" else
                               "unregistered" if status == "unregistered" else
